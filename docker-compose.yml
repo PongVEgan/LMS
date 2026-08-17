@@ -1,0 +1,22 @@
+services:
+  db:
+    image: postgres:17-alpine
+    container_name: lms-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lms
+      POSTGRES_PASSWORD: lms
+      POSTGRES_DB: lms
+    # ใช้ 5433 ฝั่ง host กัน Postgres ตัวอื่นในเครื่องชนพอร์ต
+    ports:
+      - "5433:5432"
+    volumes:
+      - lms-pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lms -d lms"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  lms-pgdata:

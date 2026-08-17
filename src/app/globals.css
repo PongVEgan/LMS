@@ -1,0 +1,87 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Prompt", sans-serif;
+  --font-mono: "MonoNum", "Prompt", sans-serif;
+}
+
+/* font-mono: monospace เฉพาะตัวเลข/สัญลักษณ์ตัวเลข — ตัวอักษร(ไทย/อังกฤษ)ตกไป Prompt
+   ใช้ฟอนต์ mono ของระบบ map เฉพาะช่วง 0-9 , . % + - / : ฿ */
+@font-face {
+  font-family: "MonoNum";
+  src: local("SF Mono"), local("SFMono-Regular"), local("Menlo"), local("Monaco"),
+    local("Consolas"), local("Liberation Mono"), local("DejaVu Sans Mono"), local("Courier New");
+  unicode-range: U+0030-0039, U+002B-002F, U+003A, U+0025;
+  font-display: swap;
+}
+
+body {
+  font-family: "Prompt", sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  overflow-x: hidden;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Learn area theme variables */
+[data-theme="dark"] {
+  --lms-bg: #000000;
+  --lms-bg-secondary: #0A0A0A;
+  --lms-bg-card: rgba(255,255,255,0.03);
+  --lms-bg-card-hover: rgba(255,255,255,0.06);
+  --lms-bg-input: rgba(255,255,255,0.05);
+  --lms-bg-overlay: rgba(0,0,0,0.6);
+  --lms-text: #f9fafb;
+  --lms-text-secondary: #9ca3af;
+  --lms-text-muted: #6b7280;
+  --lms-text-faint: #4b5563;
+  --lms-border: rgba(255,255,255,0.1);
+  --lms-border-input: rgba(255,255,255,0.15);
+  --lms-shadow: none;
+  --lms-accent: #facc15;
+  --lms-accent-bg: rgba(250,204,21,0.1);
+  --lms-accent-text: #facc15;
+  --lms-topbar: rgba(0,0,0,0.9);
+  --lms-green: #22c55e;
+  --lms-red: #ef4444;
+}
+
+[data-theme="light"] {
+  --lms-bg: #f8f9fa;
+  --lms-bg-secondary: #ffffff;
+  --lms-bg-card: #ffffff;
+  --lms-bg-card-hover: #f3f4f6;
+  --lms-bg-input: #ffffff;
+  --lms-bg-overlay: rgba(0,0,0,0.3);
+  --lms-text: #111827;
+  --lms-text-secondary: #4b5563;
+  --lms-text-muted: #6b7280;
+  --lms-text-faint: #9ca3af;
+  --lms-border: #e5e7eb;
+  --lms-border-input: #d1d5db;
+  --lms-shadow: 0 1px 3px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+  --lms-accent: #facc15;
+  --lms-accent-bg: rgba(250,204,21,0.1);
+  --lms-accent-text: #111827;
+  --lms-topbar: rgba(255,255,255,0.9);
+  --lms-green: #16a34a;
+  --lms-red: #dc2626;
+}
+
+/* Utility classes using theme variables */
+.lms-bg { background-color: var(--lms-bg); }
+.lms-bg2 { background-color: var(--lms-bg-secondary); }
+.lms-card { background-color: var(--lms-bg-card); box-shadow: var(--lms-shadow); border: 1px solid var(--lms-border); }
+.lms-card:hover { background-color: var(--lms-bg-card-hover); }
+.lms-text { color: var(--lms-text); }
+.lms-text2 { color: var(--lms-text-secondary); }
+.lms-text-m { color: var(--lms-text-muted); }
+.lms-border { border-color: var(--lms-border); }
+.lms-input {
+  background-color: var(--lms-bg-input);
+  border: 1px solid var(--lms-border-input);
+  color: var(--lms-text);
+}
+.lms-input:focus { border-color: var(--lms-accent); outline: none; }
+.lms-input::placeholder { color: var(--lms-text-faint); }
