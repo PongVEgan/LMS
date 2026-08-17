@@ -17,7 +17,8 @@
     "deploy": "npx @opennextjs/cloudflare build && npx wrangler deploy",
     "start": "next start",
     "lint": "eslint",
-    "db:seed:web": "npm --prefix server run db:seed:web"
+    "db:seed:web": "npm --prefix server run db:seed:web",
+    "db:backup": "node scripts/db-backup.mjs"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.2",

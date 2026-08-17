@@ -46,3 +46,6 @@ deploy.sh
 .wrangler
 deploy-preview.sh
 .impeccable/
+
+# database dumps (มีอีเมลผู้ใช้และ hash รหัสผ่าน ห้ามขึ้น git)
+/backups

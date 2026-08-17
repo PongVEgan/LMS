@@ -109,7 +109,9 @@ npm run dev       # รัน web (3000) + api (3001) พร้อมกัน �
 | `npm run dev:web` / `npm run dev:api` | รันแยกทีละตัว |
 | `npm run dev:kill` | ปิด process ที่ค้างพอร์ต 3000/3001 |
 | `npm run db:up` / `npm run db:down` | เปิด/ปิด Postgres container |
-| `npm run db:reset` | ล้างข้อมูลแล้ว seed ใหม่ |
+| `npm run db:reset` | ⚠️ **ลบข้อมูลทั้งหมด** แล้ว seed ใหม่ |
+| `npm run db:seed:web` | เพิ่มคอร์สสายเขียนเว็บ 3 คอร์ส (ไม่ลบของเดิม รันซ้ำได้) |
+| `npm run db:backup` | สำรอง DB เป็นไฟล์ `.sql` ใน `backups/` (เก็บ 10 ไฟล์ล่าสุด) |
 
 **บัญชีทดสอบ** (รหัสเดียวกันหมด `password123`):
 
@@ -126,6 +128,22 @@ npm run dev       # รัน web (3000) + api (3001) พร้อมกัน �
 จะเริ่มตอบ 500 เป็น HTML** (เพราะ stdout ของมันชี้ไปที่ process แม่ที่ตายแล้ว → EPIPE)
 อาการที่เห็นฝั่ง browser คือ `ClientFetchError: Unexpected token '<'` แล้วล็อกอินไม่ได้
 แก้ด้วย `npm run dev:kill` แล้ว `npm run dev` ใหม่
+
+## สำรอง / กู้คืนข้อมูล
+
+โค้ดอยู่บน git แต่**ข้อมูลอยู่ใน Docker volume ไม่ได้ขึ้น git** ต้องสำรองแยก:
+
+```bash
+npm run db:backup    # -> backups/lms-YYYYMMDD-HHMM.sql
+```
+
+กู้คืน:
+
+```bash
+docker exec -i lms-postgres psql -U lms -d lms < backups/lms-20260818-0401.sql
+```
+
+โฟลเดอร์ `backups/` อยู่ใน `.gitignore` เพราะไฟล์ dump มีอีเมลผู้ใช้และ hash รหัสผ่าน
 
 ## build / deploy (frontend)
 
