@@ -1,10 +1,11 @@
 "use client";
 
 import { learnFetch, learnPost, LMS_API } from "@/lib/learn-fetch";
-import { getYouTubeEmbedUrl } from "@/lib/video";
+import { getYouTubeId } from "@/lib/video";
+import YouTubePlayer from "@/components/YouTubePlayer";
 
 import { useSession } from "next-auth/react";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 
@@ -24,6 +25,7 @@ interface LessonDetail {
   order: number;
   isFree: boolean;
   attachments: { id: string; url: string; name: string; size: number }[];
+  progress?: { completed: boolean; position: number; watchedPercent: number };
 }
 
 function formatBytes(b: number) {
@@ -43,6 +45,9 @@ export default function LessonPage() {
   const [marking, setMarking] = useState(false);
   const [completed, setCompleted] = useState(false);
   const [nextLessonId, setNextLessonId] = useState<string | null>(null);
+  const [watchedPercent, setWatchedPercent] = useState(0);
+  // กันยิงซ้ำตอนข้ามเกณฑ์ 90% — บันทึกครั้งเดียวพอ
+  const autoCompletedRef = useRef(false);
 
   useEffect(() => {
     if (status === "loading") return;
@@ -52,12 +57,24 @@ export default function LessonPage() {
 
     const email = session.user.email;
 
+    autoCompletedRef.current = false;
+    setWatchedPercent(0);
+
     learnFetch(`/learn/lessons/${lessonId}`)
       .then((res) => {
         if (!res.ok) throw new Error("ไม่สามารถโหลดบทเรียนได้");
         return res.json();
       })
-      .then(setLesson)
+      .then((d: LessonDetail) => {
+        setLesson(d);
+        if (d.progress) {
+          setWatchedPercent(d.progress.watchedPercent);
+          if (d.progress.completed) {
+            setCompleted(true);
+            autoCompletedRef.current = true;
+          }
+        }
+      })
       .catch((err) => setError(err.message))
       .finally(() => setLoading(false));
 
@@ -73,6 +90,26 @@ export default function LessonPage() {
       })
       .catch(e => console.error("API error:", e));
   }, [slug, lessonId, session?.user?.email, status]);
+
+  /** เครื่องเล่นรายงานมาเป็นรอบ — บันทึกตำแหน่งไว้ให้ดูต่อได้ และติ๊กจบให้เมื่อถึง 90% */
+  const handleVideoProgress = useCallback(
+    async ({ position, percent, watched, duration }: { position: number; percent: number; watched: number; duration: number }) => {
+      if (!session?.user?.email) return;
+      setWatchedPercent((prev) => Math.max(prev, percent));
+      try {
+        // ส่ง duration ไปด้วย — ถ้าแอดมินยังไม่ได้กรอกความยาว backend จะเติมให้จากค่าจริง
+        const res = await learnPost("/learn/progress", { lessonId, position, watchedPercent: percent, watched, duration });
+        const data = await res.json().catch(() => null);
+        if (data?.completed && !autoCompletedRef.current) {
+          autoCompletedRef.current = true;
+          setCompleted(true);
+        }
+      } catch {
+        // เน็ตหลุดชั่วคราวไม่ต้องรบกวนผู้เรียน รอบหน้าค่อยส่งใหม่
+      }
+    },
+    [lessonId, session?.user?.email]
+  );
 
   const handleMarkComplete = async () => {
     if (!session?.user?.email || marking || completed) return;
@@ -113,7 +150,7 @@ export default function LessonPage() {
     );
   }
 
-  const ytEmbedUrl = getYouTubeEmbedUrl(lesson.videoUrl || "");
+  const ytId = getYouTubeId(lesson.videoUrl || "");
 
   return (
     <div>
@@ -121,14 +158,12 @@ export default function LessonPage() {
       {(lesson.type === "video" || lesson.videoUrl) && (
         <div className="p-3 sm:p-5">
           <div className="relative mx-auto max-w-4xl overflow-hidden rounded-lg bg-black" style={{ paddingBottom: "56.25%" }}>
-            {ytEmbedUrl ? (
-              <iframe
-                src={ytEmbedUrl}
+            {ytId ? (
+              <YouTubePlayer
+                videoId={ytId}
                 title={lesson.title}
-                className="absolute inset-0 h-full w-full"
-                allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                referrerPolicy="strict-origin-when-cross-origin"
-                allowFullScreen
+                startAt={lesson.progress?.position ?? 0}
+                onProgress={handleVideoProgress}
               />
             ) : lesson.videoUrl ? (
               <div className="absolute inset-0 flex items-center justify-center px-6 text-center text-[var(--lms-text-faint)]">
@@ -140,6 +175,20 @@ export default function LessonPage() {
               </div>
             )}
           </div>
+
+          {/* ความคืบหน้าการดู — ระบบติ๊กว่าเรียนจบให้เองเมื่อถึง 90% */}
+          {ytId && (
+            <div className="mx-auto mt-2 max-w-4xl">
+              <div className="mb-1 flex items-center justify-between text-[11px]" style={{ color: "var(--lms-text-faint)" }}>
+                <span>{completed ? "ดูจบแล้ว" : `ดูไปแล้ว ${watchedPercent}%`}</span>
+                {!completed && <span>ถึง 90% ระบบจะติ๊กว่าเรียนจบให้เอง</span>}
+              </div>
+              <div className="h-1 overflow-hidden rounded-full" style={{ background: "var(--lms-border)" }}>
+                <div className="h-full rounded-full transition-all"
+                  style={{ width: `${watchedPercent}%`, background: completed ? "var(--lms-green)" : "var(--lms-accent)" }} />
+              </div>
+            </div>
+          )}
         </div>
       )}
 

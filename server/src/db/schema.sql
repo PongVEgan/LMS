@@ -1,5 +1,5 @@
 -- โครงฐานข้อมูล LMS (dev) — รันซ้ำได้ ไฟล์นี้ลบของเดิมทิ้งก่อนเสมอ
-DROP TABLE IF EXISTS comment_likes, post_likes, comments, posts,
+DROP TABLE IF EXISTS comment_likes, post_likes, comments, posts, post_categories,
   password_resets, progress, attachments, lessons, chapters,
   orders, enrollments, courses, users CASCADE;
 
@@ -62,11 +62,13 @@ CREATE TABLE lessons (
 );
 
 CREATE TABLE attachments (
-  id        uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  lesson_id uuid NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
-  url       text NOT NULL,
-  name      text NOT NULL,
-  size      integer NOT NULL DEFAULT 0
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lesson_id  uuid NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  url        text NOT NULL,
+  name       text NOT NULL,
+  size       integer NOT NULL DEFAULT 0,
+  sort_order integer NOT NULL DEFAULT 0,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE progress (
@@ -74,6 +76,11 @@ CREATE TABLE progress (
   lesson_id    uuid NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
   completed    boolean NOT NULL DEFAULT false,
   completed_at timestamptz,
+  -- ติดตามการดูวิดีโอ (YouTube IFrame API เป็นคนส่งค่ามา)
+  position_seconds integer NOT NULL DEFAULT 0,   -- ดูค้างไว้ตรงไหน ใช้เล่นต่อ
+  watched_percent  integer NOT NULL DEFAULT 0,   -- % สูงสุดที่เคยดูถึง
+  watched_seconds  integer NOT NULL DEFAULT 0,   -- เวลาที่ดูสะสมจริง
+  last_seen_at     timestamptz,
   PRIMARY KEY (user_id, lesson_id)
 );
 
@@ -99,6 +106,16 @@ CREATE TABLE password_resets (
   user_id    uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   expires_at timestamptz NOT NULL,
   used       boolean NOT NULL DEFAULT false
+);
+
+-- หมวดหมู่โพสต์คอมมูนิตี้ (จัดการผ่านหน้าแอดมิน)
+CREATE TABLE post_categories (
+  id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  slug       text UNIQUE NOT NULL,
+  label      text NOT NULL,
+  sort_order integer NOT NULL DEFAULT 0,
+  active     boolean NOT NULL DEFAULT true,
+  created_at timestamptz NOT NULL DEFAULT now()
 );
 
 CREATE TABLE posts (

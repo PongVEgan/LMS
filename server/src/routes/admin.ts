@@ -5,6 +5,16 @@ import { requireAdmin, requireUser } from "../lib/user.js";
 export const adminRouter = Router();
 adminRouter.use(requireUser, requireAdmin);
 
+/**
+ * แปลงเป็นจำนวนเต็มไม่ติดลบ — คอลัมน์พวก duration/price/order เป็น integer
+ * ถ้าปล่อยทศนิยมหรือ NaN ผ่านไป Postgres จะโยน error ภาษาอังกฤษดิบๆ ใส่หน้าผู้ใช้
+ */
+function toInt(value: unknown, fallback: number | null = null): number | null {
+  if (value === undefined || value === null || value === "") return fallback;
+  const n = Number(value);
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : fallback;
+}
+
 /* ------------------------------------------------------------------ dashboard */
 
 /** GET /admin/stats — ตัวเลขรวม + กราฟสมัครใหม่ 30 วัน + คอร์สยอดนิยม */
@@ -106,7 +116,7 @@ adminRouter.post("/courses", async (req, res) => {
   const row = await q1(
     `INSERT INTO courses (slug, title, description, price, published)
      VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-    [slug, title, req.body?.description ?? null, Number(req.body?.price) || 0, req.body?.published !== false]
+    [slug, title, req.body?.description ?? null, toInt(req.body?.price, 0), req.body?.published !== false]
   );
   res.status(201).json({ id: row!.id });
 });
@@ -124,6 +134,17 @@ adminRouter.get("/courses/:id", async (req, res) => {
        LEFT JOIN lessons l ON l.chapter_id = ch.id
       WHERE ch.course_id = $1
       ORDER BY ch.sort_order, l.sort_order`,
+    [course.id]
+  );
+
+  // ไฟล์แนบของทุกบทเรียนในคอร์ส ดึงทีเดียวแล้วค่อยแจกเข้าแต่ละบทเรียน
+  const files = await q(
+    `SELECT a.id, a.lesson_id, a.url, a.name, a.size
+       FROM attachments a
+       JOIN lessons l ON l.id = a.lesson_id
+       JOIN chapters ch ON ch.id = l.chapter_id
+      WHERE ch.course_id = $1
+      ORDER BY a.sort_order, a.created_at`,
     [course.id]
   );
 
@@ -145,6 +166,9 @@ adminRouter.get("/courses/:id", async (req, res) => {
         duration: r.duration,
         order: r.sort_order,
         isFree: r.is_free,
+        attachments: files
+          .filter((f) => f.lesson_id === r.id)
+          .map((f) => ({ id: f.id, url: f.url, name: f.name, size: f.size })),
       });
     }
   }
@@ -197,7 +221,7 @@ adminRouter.put("/courses/:id", async (req, res) => {
       title ?? null,
       description ?? null,
       coverUrl ?? null,
-      price === undefined ? null : Number(price),
+      toInt(price),
       published === undefined ? null : !!published,
       req.params.id,
     ]
@@ -232,7 +256,7 @@ adminRouter.put("/chapters/:id", async (req, res) => {
   const { title, order } = req.body ?? {};
   await q(
     `UPDATE chapters SET title = COALESCE($1, title), sort_order = COALESCE($2, sort_order) WHERE id = $3`,
-    [title ?? null, order === undefined ? null : Number(order), req.params.id]
+    [title ?? null, toInt(order), req.params.id]
   );
   res.json({ ok: true });
 });
@@ -261,7 +285,7 @@ adminRouter.post("/chapters/:id/lessons", async (req, res) => {
       String(req.body?.type ?? "video"),
       req.body?.videoUrl ?? null,
       req.body?.content ?? null,
-      Number(req.body?.duration) || 0,
+      toInt(req.body?.duration, 0),
       next!.n,
       !!req.body?.isFree,
     ]
@@ -288,8 +312,8 @@ adminRouter.put("/lessons/:id", async (req, res) => {
       type ?? null,
       videoUrl ?? null,
       content ?? null,
-      duration === undefined ? null : Number(duration),
-      order === undefined ? null : Number(order),
+      toInt(duration),
+      toInt(order),
       isFree === undefined ? null : !!isFree,
       req.params.id,
     ]
@@ -299,6 +323,104 @@ adminRouter.put("/lessons/:id", async (req, res) => {
 
 adminRouter.delete("/lessons/:id", async (req, res) => {
   await q("DELETE FROM lessons WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+});
+
+/* ---------------------------------------------------------------- ไฟล์แนบ */
+
+/** POST /admin/lessons/:id/attachments — { url, name, size } */
+adminRouter.post("/lessons/:id/attachments", async (req, res) => {
+  const url = String(req.body?.url ?? "").trim();
+  const name = String(req.body?.name ?? "").trim();
+  if (!url || !name) return res.status(400).json({ message: "ต้องมีทั้งลิงก์และชื่อไฟล์" });
+
+  const lesson = await q1("SELECT 1 FROM lessons WHERE id = $1", [req.params.id]);
+  if (!lesson) return res.status(404).json({ message: "ไม่พบบทเรียน" });
+
+  const next = await q1<{ n: number }>(
+    "SELECT coalesce(max(sort_order), 0) + 1 AS n FROM attachments WHERE lesson_id = $1",
+    [req.params.id]
+  );
+  const row = await q1(
+    `INSERT INTO attachments (lesson_id, url, name, size, sort_order)
+     VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+    [req.params.id, url, name, toInt(req.body?.size, 0), next!.n]
+  );
+  res.status(201).json({ id: row!.id });
+});
+
+/** DELETE /admin/attachments/:id — ลบเฉพาะแถวใน DB ไฟล์บน Cloudinary ยังอยู่ */
+adminRouter.delete("/attachments/:id", async (req, res) => {
+  await q("DELETE FROM attachments WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+});
+
+/* ------------------------------------------------------ หมวดหมู่คอมมูนิตี้ */
+
+/** GET /admin/categories — รวมที่ปิดใช้งานด้วย */
+adminRouter.get("/categories", async (_req, res) => {
+  const rows = await q(
+    `SELECT c.id, c.slug, c.label, c.sort_order, c.active,
+            (SELECT count(*) FROM posts WHERE category = c.slug)::int AS post_count
+       FROM post_categories c ORDER BY c.sort_order, c.label`
+  );
+  res.json(
+    rows.map((r) => ({
+      id: r.id,
+      slug: r.slug,
+      label: r.label,
+      order: r.sort_order,
+      active: r.active,
+      postCount: r.post_count,
+    }))
+  );
+});
+
+/** POST /admin/categories — { slug, label, order? } */
+adminRouter.post("/categories", async (req, res) => {
+  const slug = String(req.body?.slug ?? "").trim();
+  const label = String(req.body?.label ?? "").trim();
+  if (!/^[a-z0-9-]+$/.test(slug)) {
+    return res.status(400).json({ message: "slug ใช้ได้เฉพาะ a-z, 0-9 และ - เท่านั้น" });
+  }
+  if (!label) return res.status(400).json({ message: "ต้องมีชื่อหมวดหมู่" });
+  if (await q1("SELECT 1 FROM post_categories WHERE slug = $1", [slug])) {
+    return res.status(409).json({ message: "slug นี้ถูกใช้แล้ว" });
+  }
+
+  const next = await q1<{ n: number }>("SELECT coalesce(max(sort_order), 0) + 1 AS n FROM post_categories");
+  const row = await q1(
+    "INSERT INTO post_categories (slug, label, sort_order) VALUES ($1, $2, $3) RETURNING id",
+    [slug, label, toInt(req.body?.order, next!.n)]
+  );
+  res.status(201).json({ id: row!.id });
+});
+
+/** PUT /admin/categories/:id — { label?, order?, active? } (slug แก้ไม่ได้ เพราะโพสต์อ้างอิงอยู่) */
+adminRouter.put("/categories/:id", async (req, res) => {
+  const { label, order, active } = req.body ?? {};
+  await q(
+    `UPDATE post_categories
+        SET label      = COALESCE($1, label),
+            sort_order = COALESCE($2, sort_order),
+            active     = COALESCE($3, active)
+      WHERE id = $4`,
+    [label ?? null, toInt(order), active === undefined ? null : !!active, req.params.id]
+  );
+  res.json({ ok: true });
+});
+
+/** DELETE /admin/categories/:id — ลบไม่ได้ถ้ายังมีโพสต์อยู่ (ให้ปิดใช้งานแทน) */
+adminRouter.delete("/categories/:id", async (req, res) => {
+  const cat = await q1<{ slug: string }>("SELECT slug FROM post_categories WHERE id = $1", [req.params.id]);
+  if (!cat) return res.status(404).json({ message: "ไม่พบหมวดหมู่นี้" });
+
+  const used = await q1<{ n: number }>("SELECT count(*)::int AS n FROM posts WHERE category = $1", [cat.slug]);
+  if (used!.n > 0) {
+    return res.status(409).json({ message: `มีโพสต์ในหมวดนี้ ${used!.n} รายการ — ปิดใช้งานแทนการลบ` });
+  }
+
+  await q("DELETE FROM post_categories WHERE id = $1", [req.params.id]);
   res.json({ ok: true });
 });
 

@@ -50,6 +50,14 @@ function toPost(r: any) {
   };
 }
 
+/** GET /community/categories — หมวดหมู่ที่เปิดใช้งาน (หน้าเว็บเอาไปทำแท็บ/ตัวเลือก) */
+communityRouter.get("/categories", async (_req, res) => {
+  const rows = await q(
+    "SELECT slug, label FROM post_categories WHERE active = true ORDER BY sort_order, label"
+  );
+  res.json(rows);
+});
+
 /** GET /community/posts?category=&limit= */
 communityRouter.get("/posts", async (req, res) => {
   const category = String(req.query.category ?? "all");

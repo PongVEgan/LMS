@@ -12,6 +12,7 @@ const NAV = [
   { href: "/admin/courses", label: "คอร์ส" },
   { href: "/admin/students", label: "ผู้เรียน" },
   { href: "/admin/orders", label: "คำสั่งซื้อ" },
+  { href: "/admin/categories", label: "หมวดหมู่" },
 ];
 
 function AdminShell({ children }: { children: React.ReactNode }) {

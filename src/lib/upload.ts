@@ -1,8 +1,9 @@
 import { learnPost } from "./learn-fetch";
 
-export type UploadFolder = "course" | "community";
+export type UploadFolder = "course" | "community" | "attachment";
 
-const MAX_BYTES = 5 * 1024 * 1024; // 5MB
+const MAX_BYTES = 5 * 1024 * 1024; // 5MB — รูป
+const MAX_FILE_BYTES = 20 * 1024 * 1024; // 20MB — ไฟล์แนบ (Cloudinary ฟรีจำกัด 10MB/raw ปรับได้ตามแพ็กเกจ)
 const ALLOWED = ["image/jpeg", "image/png", "image/webp", "image/gif"];
 
 interface SignatureResponse {
@@ -33,7 +34,27 @@ export async function uploadImage(
 ): Promise<string> {
   const invalid = validateImage(file);
   if (invalid) throw new Error(invalid);
+  return upload(file, folder, onProgress);
+}
 
+/** อัปโหลดไฟล์อะไรก็ได้ (ใช้กับไฟล์แนบบทเรียน) — คืน { url, name, size } ไว้บันทึกลง DB */
+export async function uploadFile(
+  file: File,
+  folder: UploadFolder,
+  onProgress?: (percent: number) => void
+): Promise<{ url: string; name: string; size: number }> {
+  if (file.size > MAX_FILE_BYTES) {
+    throw new Error(`ไฟล์ใหญ่เกิน ${MAX_FILE_BYTES / 1024 / 1024}MB`);
+  }
+  const url = await upload(file, folder, onProgress);
+  return { url, name: file.name, size: file.size };
+}
+
+async function upload(
+  file: File,
+  folder: UploadFolder,
+  onProgress?: (percent: number) => void
+): Promise<string> {
   const sigRes = await learnPost("/uploads/signature", { folder });
   if (!sigRes.ok) {
     const err = (await sigRes.json().catch(() => ({}))) as { message?: string };

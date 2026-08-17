@@ -6,13 +6,9 @@ import Link from "next/link";
 import { learnFetch, learnPost, learnPut, learnDelete, LMS_API } from "@/lib/learn-fetch";
 import ImageUpload from "@/components/ImageUpload";
 
-const CATEGORIES = [
-  { value: "all", label: "ทั้งหมด" },
-  { value: "introduction", label: "แนะนำตัว" },
-  { value: "general", label: "ทั่วไป" },
-  { value: "bank-uncensored", label: "Bank Uncensored" },
-  { value: "bhc", label: "Business Health Check" },
-];
+// หมวดหมู่มาจาก GET /community/categories (จัดการที่ /admin/categories)
+// ค่านี้ใช้ระหว่างรอโหลดเท่านั้น
+const ALL_TAB = { value: "all", label: "ทั้งหมด" };
 
 const LEVEL_COLORS: Record<number, string> = {
   1: "bg-zinc-700 text-zinc-300", 2: "bg-zinc-700 text-zinc-300",
@@ -55,6 +51,7 @@ export default function CommunityPage() {
   const [newPost, setNewPost] = useState("");
   const [newImage, setNewImage] = useState<string | null>(null);
   const [showImagePicker, setShowImagePicker] = useState(false);
+  const [categories, setCategories] = useState<{ value: string; label: string }[]>([ALL_TAB]);
   const [postCategory, setPostCategory] = useState("general");
   const [posting, setPosting] = useState(false);
   const [showOnboarding, setShowOnboarding] = useState(false);
@@ -76,6 +73,19 @@ export default function CommunityPage() {
     if (!email) return;
     learnFetch("/community/leaderboard?period=7d")
       .then(r => r.json()).then(d => setLeaderboard(Array.isArray(d) ? d : [])).catch(e => console.error("API error:", e));
+  }, [email]);
+
+  // หมวดหมู่จากหลังบ้าน — แอดมินเพิ่ม/ปิดได้ที่ /admin/categories
+  useEffect(() => {
+    if (!email) return;
+    learnFetch("/community/categories")
+      .then(r => r.ok ? r.json() : [])
+      .then((d: { slug: string; label: string }[]) => {
+        if (!Array.isArray(d) || d.length === 0) return;
+        setCategories([ALL_TAB, ...d.map(c => ({ value: c.slug, label: c.label }))]);
+        setPostCategory(prev => (d.some(c => c.slug === prev) ? prev : d[0].slug));
+      })
+      .catch(e => console.error("API error:", e));
   }, [email]);
 
   // Check onboarding
@@ -146,7 +156,7 @@ export default function CommunityPage() {
 
           {/* Category Filter */}
           <div className="flex gap-2 mb-5 overflow-x-auto pb-1">
-            {CATEGORIES.map(c => (
+            {categories.map(c => (
               <button key={c.value} onClick={() => setCategory(c.value)}
                 className="shrink-0 rounded-full px-4 py-1.5 text-sm transition"
                 style={{ background: category === c.value ? "var(--lms-accent)" : "var(--lms-bg-card)", color: category === c.value ? "#000" : "var(--lms-text-secondary)", border: `1px solid ${category === c.value ? "var(--lms-accent)" : "var(--lms-border)"}` }}>
@@ -171,7 +181,7 @@ export default function CommunityPage() {
               <div className="flex items-center gap-2">
                 <select value={postCategory} onChange={e => setPostCategory(e.target.value)}
                   className="rounded-lg px-3 py-1.5 text-xs lms-input">
-                  {CATEGORIES.filter(c => c.value !== "all").map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+                  {categories.filter(c => c.value !== "all").map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
                 </select>
                 {!newImage && !showImagePicker && (
                   <button onClick={() => setShowImagePicker(true)} title="แนบรูป"

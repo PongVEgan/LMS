@@ -55,7 +55,7 @@ server/src/
 - role ฝังอยู่ใน JWT ตอนล็อกอิน → **เปลี่ยน role ในฐานข้อมูลแล้วต้อง logout/login ใหม่**
 - ตั้งแอดมินคนแรกด้วย SQL: `UPDATE users SET role='admin' WHERE email='...'`
 - ธีมหลังบ้านล็อก `data-theme="dark"` ไว้ ไม่ตามปุ่มสลับธีมของฝั่งผู้เรียน
-- ยังไม่มี: อัปโหลดไฟล์ (รับเป็น URL), จัดการ attachments, เลื่อนลำดับบท/บทเรียนจาก UI
+- ยังไม่มี: เลื่อนลำดับบท/บทเรียนแบบลากวาง (API รับ `order` แล้ว UI ยังไม่มีปุ่ม)
 
 ## หน้าแรก (`/`)
 - **public** — middleware ไม่ได้กัน ใครก็เปิดได้ ดึงคอร์สจาก `GET /public/courses`
@@ -63,6 +63,10 @@ server/src/
   `next build` จะพยายาม prerender แล้วยิง API ที่ยังไม่รัน
 - API ล่ม → `getCourses()` คืน [] แล้วโชว์ "ยังไม่มีคอร์ส" แทนที่จะพังทั้งหน้า
 - ปุ่ม/ลิงก์เปลี่ยนตาม session (`await auth()`): ล็อกอินแล้ว → เข้าห้องเรียน/ซื้อคอร์ส · ยังไม่ล็อกอิน → สมัคร/เข้าสู่ระบบ
+
+## หมวดหมู่คอมมูนิตี้
+- อยู่ในตาราง `post_categories` จัดการที่ `/admin/categories` — **ห้าม hardcode กลับลงโค้ด**
+- `slug` แก้ไม่ได้หลังสร้าง (โพสต์เก็บ slug ไว้ตรงๆ) · หมวดที่มีโพสต์ลบไม่ได้ ให้ปิดใช้งานแทน
 
 ## กติกาสำคัญ
 - **ห้าม hardcode โดเมน/คีย์/ชื่อแบรนด์ลงในโค้ด** — ทุกอย่างผ่าน env ใน `src/lib/site.ts`
@@ -90,10 +94,17 @@ server/src/
   `api_secret` อยู่แค่ `server/.env` ห้ามย้ายไปฝั่ง client หรือใส่ใน `NEXT_PUBLIC_*` เด็ดขาด
 - โฟลเดอร์ whitelist ที่ `server/src/routes/uploads.ts` — `course` (แอดมิน) / `community` (ทุกคน)
   เพิ่มจุดอัปโหลดใหม่ต้องเพิ่ม key ในนั้นก่อน
-- UI ใช้ `src/components/ImageUpload.tsx` ร่วมกันทุกจุด · logic อยู่ `src/lib/upload.ts`
+- UI: `src/components/ImageUpload.tsx` (รูป) · `src/components/AttachmentManager.tsx` (ไฟล์แนบบทเรียน)
+  logic อยู่ `src/lib/upload.ts` → `uploadImage()` / `uploadFile()`
+- ไฟล์แนบใช้ folder `attachment` → `/auto/upload` · **PDF/ZIP ต้องปลดล็อกที่ Cloudinary
+  Settings → Security → Restricted media types ไม่งั้นดาวน์โหลดได้ 401**
 - ยังไม่ลบไฟล์เก่าบน Cloudinary ตอนเปลี่ยนรูป (ไฟล์กำพร้าค้างไว้)
 
 ## Video
+- เล่นผ่าน **YouTube IFrame API** (`src/components/YouTubePlayer.tsx`) ไม่ใช่ iframe ธรรมดา
+  เพื่ออ่านตำแหน่งจริง → เล่นต่อจากจุดเดิม + รู้ % ที่ดู
+- รายงานความคืบหน้าทุก 15 วินาที และตอนหยุด/สลับแท็บ/ออกจากหน้า
+- **ดูถึง 90% ระบบติ๊กว่าเรียนจบให้เอง** (เกณฑ์อยู่ที่ `AUTO_COMPLETE_AT` ใน `server/src/routes/learn.ts`)
 - **YouTube เท่านั้น** — `src/lib/video.ts` → `getYouTubeEmbedUrl()` รับลิงก์ทุกแบบ
   (`watch?v=`, `youtu.be/`, `embed/`, `shorts/`, `live/`, video id เปล่า) พร้อม `t` / `start` / `list`
 - ลิงก์ที่ไม่ใช่ YouTube จะขึ้น "ลิงก์วิดีโอไม่ถูกต้อง" — ไม่มี player สำรอง อย่าเพิ่มกลับถ้าไม่ได้สั่ง

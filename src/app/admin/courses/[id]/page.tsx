@@ -13,8 +13,10 @@ import {
   formatDuration,
   parseDuration,
 } from "@/lib/admin-fetch";
-import { getYouTubeEmbedUrl } from "@/lib/video";
+import { getYouTubeEmbedUrl, getYouTubeId } from "@/lib/video";
+import { useYouTubeDuration } from "@/lib/youtube-api";
 import ImageUpload from "@/components/ImageUpload";
+import AttachmentManager, { type Attachment } from "@/components/AttachmentManager";
 
 interface AdminLesson {
   id: string;
@@ -26,6 +28,7 @@ interface AdminLesson {
   duration: number;
   order: number;
   isFree: boolean;
+  attachments: Attachment[];
 }
 interface AdminChapter { id: string; title: string; order: number; lessons: AdminLesson[] }
 interface AdminStudent { id: string; email: string; name: string | null; customerCode: string; enrolledAt: string }
@@ -34,6 +37,9 @@ interface CourseDetail {
   coverUrl: string | null; price: number; published: boolean;
   chapters: AdminChapter[]; students: AdminStudent[];
 }
+
+// ตัวเลข หรือ ชม:นาที:วินาที (ใช้ : หรือ . เป็นตัวคั่น) — 0 หรือ 0:00 ถือว่าถูกต้อง
+const DURATION_PATTERN = /^\d+([:.]\d{1,2}){0,2}$/;
 
 const TABS = [
   { key: "content", label: "เนื้อหา" },
@@ -145,7 +151,9 @@ function ContentTab({ course, run }: { course: CourseDetail; run: (fn: () => Pro
             {ch.lessons.map((l) =>
               editingLesson === l.id ? (
                 <LessonForm key={l.id} lesson={l} onCancel={() => setEditingLesson(null)}
-                  onSave={async (body) => { await run(() => adminPut(`/lessons/${l.id}`, body), "บันทึกบทเรียนแล้ว"); setEditingLesson(null); }} />
+                  onSave={async (body) => { await run(() => adminPut(`/lessons/${l.id}`, body), "บันทึกบทเรียนแล้ว"); setEditingLesson(null); }}
+                  onAddFile={(f) => run(() => adminPost(`/lessons/${l.id}/attachments`, f), "เพิ่มไฟล์แล้ว")}
+                  onRemoveFile={(fid) => run(() => adminDelete(`/attachments/${fid}`), "ลบไฟล์แล้ว")} />
               ) : (
                 <div key={l.id} className="flex items-center gap-3 rounded-lg px-3 py-2"
                   style={{ background: "var(--lms-bg-input)", border: "1px solid var(--lms-border)" }}>
@@ -154,6 +162,11 @@ function ContentTab({ course, run }: { course: CourseDetail; run: (fn: () => Pro
                     {l.type}
                   </span>
                   <span className="min-w-0 flex-1 truncate text-sm">{l.title}</span>
+                  {l.attachments?.length > 0 && (
+                    <span className="shrink-0 text-[10px]" style={{ color: "var(--lms-text-faint)" }}>
+                      📎 {l.attachments.length}
+                    </span>
+                  )}
                   {l.type === "video" && !getYouTubeEmbedUrl(l.videoUrl || "") && (
                     <span className="shrink-0 text-[10px]" style={{ color: "var(--lms-red)" }}>ลิงก์ไม่ใช่ YouTube</span>
                   )}
@@ -185,9 +198,10 @@ function ContentTab({ course, run }: { course: CourseDetail; run: (fn: () => Pro
       <form
         onSubmit={(e) => { e.preventDefault(); if (!newChapter.trim()) return; run(() => adminPost(`/courses/${course.id}/chapters`, { title: newChapter.trim() }), "เพิ่มบทแล้ว"); setNewChapter(""); }}
         className="flex gap-2">
-        <input value={newChapter} onChange={(e) => setNewChapter(e.target.value)} placeholder="ชื่อบทใหม่"
+        <input value={newChapter} onChange={(e) => setNewChapter(e.target.value)} placeholder="ชื่อบทใหม่ เช่น บทที่ 1 · เริ่มต้น"
           className="flex-1 rounded-lg px-3 py-2 text-sm lms-input" />
-        <button type="submit" className="rounded-lg px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+        <button type="submit" disabled={!newChapter.trim()}
+          className="rounded-lg px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ background: "var(--lms-accent)" }}>
           เพิ่มบท
         </button>
@@ -196,10 +210,13 @@ function ContentTab({ course, run }: { course: CourseDetail; run: (fn: () => Pro
   );
 }
 
-function LessonForm({ lesson, onSave, onCancel }: {
+function LessonForm({ lesson, onSave, onCancel, onAddFile, onRemoveFile }: {
   lesson?: AdminLesson;
   onSave: (body: Record<string, unknown>) => void | Promise<void>;
   onCancel: () => void;
+  /** ไฟล์แนบผูกกับ lesson id — ตอนสร้างบทเรียนใหม่ยังไม่มี id เลยยังแนบไม่ได้ */
+  onAddFile?: (file: { url: string; name: string; size: number }) => Promise<void>;
+  onRemoveFile?: (id: string) => Promise<void>;
 }) {
   const [form, setForm] = useState({
     title: lesson?.title ?? "",
@@ -207,7 +224,8 @@ function LessonForm({ lesson, onSave, onCancel }: {
     videoUrl: lesson?.videoUrl ?? "",
     content: lesson?.content ?? "",
     description: lesson?.description ?? "",
-    duration: lesson ? formatDuration(lesson.duration) : "",
+    // 0 = ยังไม่ระบุ ปล่อยช่องว่างไว้ดีกว่าโชว์ 0:00
+    duration: lesson && lesson.duration > 0 ? formatDuration(lesson.duration) : "",
     isFree: lesson?.isFree ?? false,
   });
 
@@ -215,6 +233,13 @@ function LessonForm({ lesson, onSave, onCancel }: {
     setForm((f) => ({ ...f, [k]: e.target.type === "checkbox" ? (e.target as HTMLInputElement).checked : e.target.value }));
 
   const ytOk = !form.videoUrl || !!getYouTubeEmbedUrl(form.videoUrl);
+
+  // อ่านความยาวจริงจากคลิปที่วางลิงก์มา
+  const ytId = form.type === "video" ? getYouTubeId(form.videoUrl) : null;
+  const { duration: clipDuration, loading: loadingDuration } = useYouTubeDuration(ytId);
+
+  // ช่องว่าง = ใช้ความยาวจากคลิปไปเลย พอผู้ใช้พิมพ์เองค่าที่พิมพ์จะชนะ
+  const durationValue = form.duration || (clipDuration ? formatDuration(clipDuration) : "");
 
   return (
     <div className="space-y-3 rounded-lg p-3" style={{ background: "var(--lms-bg-input)", border: "1px solid var(--lms-accent)" }}>
@@ -227,8 +252,33 @@ function LessonForm({ lesson, onSave, onCancel }: {
           <option value="text">text</option>
           <option value="file">file</option>
         </select>
-        <input value={form.duration} onChange={set("duration")} placeholder="ความยาว เช่น 10:30"
-          className="rounded-lg px-3 py-2 text-sm lms-input" />
+        <div>
+          <input value={durationValue} onChange={set("duration")} placeholder="ความยาว เช่น 10:30"
+            className="w-full rounded-lg px-3 py-2 text-sm lms-input" />
+          {/* บอกทันทีว่าระบบตีความเป็นเท่าไร กันพิมพ์ผิดรูปแบบแล้วได้ค่าเพี้ยน
+              0 ถือว่าปกติ (= ไม่ระบุ) ผิดจริงคือพิมพ์อักขระที่ไม่ใช่ตัวเลข/ตัวคั่น */}
+          {loadingDuration && form.type === "video" && (
+            <p className="mt-1 text-[11px]" style={{ color: "var(--lms-text-faint)" }}>กำลังอ่านความยาวจากคลิป...</p>
+          )}
+          {clipDuration && durationValue.trim() !== formatDuration(clipDuration) && (
+            <button type="button" onClick={() => setForm((f) => ({ ...f, duration: formatDuration(clipDuration) }))}
+              className="mt-1 text-[11px] hover:underline" style={{ color: "var(--lms-accent-text)" }}>
+              ใช้ความยาวจากคลิป ({formatDuration(clipDuration)})
+            </button>
+          )}
+          {durationValue.trim() !== "" && (
+            DURATION_PATTERN.test(durationValue.trim()) ? (
+              <p className="mt-1 text-[11px]" style={{ color: "var(--lms-text-faint)" }}>
+                = {formatDuration(parseDuration(durationValue))} นาที ({parseDuration(durationValue)} วินาที)
+                {clipDuration && durationValue.trim() === formatDuration(clipDuration) ? " · ดึงจากคลิปให้อัตโนมัติ" : ""}
+              </p>
+            ) : (
+              <p className="mt-1 text-[11px]" style={{ color: "var(--lms-red)" }}>
+                รูปแบบไม่ถูกต้อง — ใช้ 10:30 หรือใส่จำนวนวินาที
+              </p>
+            )
+          )}
+        </div>
         <label className="flex items-center gap-2 px-1 text-xs" style={{ color: "var(--lms-text-muted)" }}>
           <input type="checkbox" checked={form.isFree} onChange={set("isFree")} />
           ดูฟรี (ไม่ต้องซื้อคอร์ส)
@@ -255,6 +305,14 @@ function LessonForm({ lesson, onSave, onCancel }: {
       <input value={form.description} onChange={set("description")} placeholder="คำอธิบายสั้นๆ (ไม่บังคับ)"
         className="w-full rounded-lg px-3 py-2 text-sm lms-input" />
 
+      {lesson && onAddFile && onRemoveFile ? (
+        <AttachmentManager attachments={lesson.attachments ?? []} onAdd={onAddFile} onRemove={onRemoveFile} />
+      ) : (
+        <p className="text-[11px]" style={{ color: "var(--lms-text-faint)" }}>
+          บันทึกบทเรียนก่อน แล้วกด &quot;แก้ไข&quot; อีกครั้งเพื่อแนบไฟล์
+        </p>
+      )}
+
       <div className="flex gap-2">
         <button
           onClick={() => onSave({
@@ -263,7 +321,7 @@ function LessonForm({ lesson, onSave, onCancel }: {
             videoUrl: form.videoUrl.trim() || null,
             content: form.content || null,
             description: form.description || null,
-            duration: parseDuration(form.duration),
+            duration: parseDuration(durationValue),
             isFree: form.isFree,
           })}
           disabled={!form.title.trim()}
@@ -379,7 +437,8 @@ function StudentsTab({ course, run }: { course: CourseDetail; run: (fn: () => Pr
         className="flex gap-2">
         <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="อีเมลผู้เรียน"
           className="flex-1 rounded-lg px-3 py-2 text-sm lms-input" />
-        <button type="submit" className="rounded-lg px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90"
+        <button type="submit" disabled={!email.trim()}
+          className="rounded-lg px-4 py-2 text-sm font-semibold text-black transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-40"
           style={{ background: "var(--lms-accent)" }}>
           ให้สิทธิ์เรียน
         </button>

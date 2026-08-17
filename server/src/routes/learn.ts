@@ -132,8 +132,14 @@ learnRouter.get("/lessons/:id", async (req, res) => {
   }
 
   const attachments = await q(
-    "SELECT id, url, name, size FROM attachments WHERE lesson_id = $1 ORDER BY name",
+    "SELECT id, url, name, size FROM attachments WHERE lesson_id = $1 ORDER BY sort_order, created_at",
     [lesson.id]
+  );
+
+  // ความคืบหน้าของผู้เรียนคนนี้ — ใช้เล่นต่อจากจุดเดิม
+  const prog = await q1(
+    "SELECT completed, position_seconds, watched_percent FROM progress WHERE user_id = $1 AND lesson_id = $2",
+    [req.user!.id, lesson.id]
   );
 
   res.json({
@@ -149,12 +155,24 @@ learnRouter.get("/lessons/:id", async (req, res) => {
     order: lesson.sort_order,
     isFree: lesson.is_free,
     attachments,
+    progress: {
+      completed: prog?.completed ?? false,
+      position: prog?.position_seconds ?? 0,
+      watchedPercent: prog?.watched_percent ?? 0,
+    },
   });
 });
 
-/** POST /learn/progress — { lessonId, completed } */
+/**
+ * POST /learn/progress
+ *   { lessonId, completed }                          → ติ๊กว่าเรียนจบ (ปุ่มกดเอง)
+ *   { lessonId, position, watchedPercent, watched }  → บันทึกตำแหน่งวิดีโอระหว่างดู
+ *
+ * watchedPercent เก็บเป็นค่าสูงสุดที่เคยดูถึง (ถอยกลับไปดูซ้ำไม่ทำให้ลดลง)
+ * ถึง 90% เมื่อไหร่ระบบติ๊กว่าเรียนจบให้เอง
+ */
 learnRouter.post("/progress", async (req, res) => {
-  const { lessonId, completed } = req.body ?? {};
+  const { lessonId, completed, position, watchedPercent, watched, duration } = req.body ?? {};
   if (!lessonId) return res.status(400).json({ message: "ไม่พบ lessonId" });
 
   const lesson = await q1(
@@ -169,13 +187,43 @@ learnRouter.post("/progress", async (req, res) => {
   );
   if (!enrolled) return res.status(403).json({ message: "คุณยังไม่มีสิทธิ์เรียนคอร์สนี้" });
 
-  await q(
-    `INSERT INTO progress (user_id, lesson_id, completed, completed_at)
-     VALUES ($1, $2, $3, CASE WHEN $3 THEN now() END)
-     ON CONFLICT (user_id, lesson_id)
-     DO UPDATE SET completed = EXCLUDED.completed, completed_at = EXCLUDED.completed_at`,
-    [req.user!.id, lessonId, completed !== false]
+  // เครื่องเล่นรู้ความยาวจริงจาก YouTube — ถ้าแอดมินยังไม่ได้กรอก เติมให้เลย
+  // (เขียนทับเฉพาะตอนที่ยังเป็น 0 จะได้ไม่ไปทับค่าที่แอดมินตั้งใจใส่เอง)
+  const realDuration = Math.max(0, Math.round(Number(duration) || 0));
+  if (realDuration > 0) {
+    await q("UPDATE lessons SET duration = $1 WHERE id = $2 AND duration = 0", [realDuration, lessonId]);
+  }
+
+  const AUTO_COMPLETE_AT = 90; // % ที่ถือว่าเรียนจบแล้ว
+  const percent = Math.max(0, Math.min(100, Math.round(Number(watchedPercent) || 0)));
+  const pos = Math.max(0, Math.round(Number(position) || 0));
+  const watchedSec = Math.max(0, Math.round(Number(watched) || 0));
+
+  // กดปุ่ม "เรียนจบแล้ว" เอง หรือดูถึงเกณฑ์
+  const markComplete = completed === true || percent >= AUTO_COMPLETE_AT;
+
+  const row = await q1(
+    `INSERT INTO progress (user_id, lesson_id, completed, completed_at,
+                           position_seconds, watched_percent, watched_seconds, last_seen_at)
+     VALUES ($1, $2, $3, CASE WHEN $3 THEN now() END, $4, $5, $6, now())
+     ON CONFLICT (user_id, lesson_id) DO UPDATE SET
+       -- จบแล้วไม่ถอยกลับเป็นยังไม่จบ นอกจากส่ง completed:false มาตรงๆ
+       completed        = CASE WHEN $7 THEN false ELSE progress.completed OR EXCLUDED.completed END,
+       completed_at     = CASE WHEN $7 THEN NULL
+                               WHEN progress.completed THEN progress.completed_at
+                               ELSE EXCLUDED.completed_at END,
+       position_seconds = EXCLUDED.position_seconds,
+       watched_percent  = greatest(progress.watched_percent, EXCLUDED.watched_percent),
+       watched_seconds  = progress.watched_seconds + EXCLUDED.watched_seconds,
+       last_seen_at     = now()
+     RETURNING completed, watched_percent, position_seconds`,
+    [req.user!.id, lessonId, markComplete, pos, percent, watchedSec, completed === false]
   );
 
-  res.json({ ok: true });
+  res.json({
+    ok: true,
+    completed: row!.completed,
+    watchedPercent: row!.watched_percent,
+    position: row!.position_seconds,
+  });
 });

@@ -155,14 +155,31 @@ next-auth Credentials provider เรียกฝั่ง server
 ```
 
 ### `POST /learn/progress`
+ใช้ 2 แบบ — กดปุ่มเอง หรือรายงานอัตโนมัติจากเครื่องเล่นวิดีโอ
+
 ```jsonc
+// กดปุ่ม "เรียนจบแล้ว"
 { "lessonId": "...", "completed": true }
+// เครื่องเล่นรายงานทุก 15 วินาที (และตอนหยุด/ออกจากหน้า)
+{ "lessonId": "...", "position": 125, "watchedPercent": 42, "watched": 15 }
+// ตอบกลับ
+{ "ok": true, "completed": false, "watchedPercent": 42, "position": 125 }
 ```
-สำเร็จ → หน้าเว็บเด้งไปบทถัดไปเอง
+- `watchedPercent` เก็บเป็น **ค่าสูงสุดที่เคยดูถึง** — ถอยกลับไปดูซ้ำไม่ทำให้ลดลง
+- `watched` = วินาทีที่ดูเพิ่มตั้งแต่รายงานครั้งก่อน ระบบบวกสะสมใน `watched_seconds`
+- **แตะ 90% เมื่อไหร่ระบบติ๊กว่าเรียนจบให้เอง** · จบแล้วไม่ถอยกลับเป็นยังไม่จบ
+  (ยกเว้นส่ง `completed: false` มาตรงๆ)
+- `GET /learn/lessons/:id` คืน `progress: { completed, position, watchedPercent }` ให้เล่นต่อจากจุดเดิม
 
 ---
 
 ## 3. Community
+
+### `GET /community/categories`
+หมวดหมู่ที่เปิดใช้งาน เรียงตามลำดับที่แอดมินตั้ง — หน้าเว็บเอาไปทำแท็บกรองและตัวเลือกตอนโพสต์
+```jsonc
+[{ "slug": "general", "label": "ทั่วไป" }]
+```
 
 ### `GET /community/posts?category=<cat>&limit=30`
 `category` เป็น `all` หรือชื่อหมวด — ตอบ array
@@ -255,6 +272,22 @@ next-auth Credentials provider เรียกฝั่ง server
 | POST | `/admin/chapters/:id/lessons` | `{ title, type?, videoUrl?, content?, duration?, isFree? }` |
 | PUT / DELETE | `/admin/lessons/:id` | field เดียวกัน + `description?` `order?` |
 
+### ไฟล์แนบบทเรียน
+| Method | Path | Body / หมายเหตุ |
+|---|---|---|
+| POST | `/admin/lessons/:id/attachments` | `{ url, name, size }` — url ได้จากการอัปโหลด (หัวข้อ 6) |
+| DELETE | `/admin/attachments/:id` | ลบเฉพาะแถวใน DB **ไฟล์บน Cloudinary ยังอยู่** |
+
+`GET /admin/courses/:id` คืน `chapters[].lessons[].attachments[]` มาด้วยแล้ว
+
+### หมวดหมู่คอมมูนิตี้
+| Method | Path | Body / หมายเหตุ |
+|---|---|---|
+| GET | `/admin/categories` | รวมที่ปิดใช้งาน + `postCount` |
+| POST | `/admin/categories` | `{ slug, label, order? }` — slug ตรง `^[a-z0-9-]+$` ซ้ำ → 409 |
+| PUT | `/admin/categories/:id` | `{ label?, order?, active? }` — **slug แก้ไม่ได้** (โพสต์อ้างอิงอยู่) |
+| DELETE | `/admin/categories/:id` | มีโพสต์ในหมวดนั้น → 409 ให้ปิดใช้งานแทน |
+
 ### ผู้เรียน
 | Method | Path | Body / หมายเหตุ |
 |---|---|---|
@@ -312,7 +345,7 @@ API ตัวนี้ออกแค่ลายเซ็นให้ `api_secr
 
 ```jsonc
 // request — folder เป็น key ที่ whitelist ไว้เท่านั้น ส่งค่าอื่นได้ 400
-{ "folder": "course" }     // "course" (แอดมินเท่านั้น) | "community" (ผู้ใช้ทั่วไป)
+{ "folder": "course" }     // "course" (แอดมิน) | "community" (ทุกคน) | "attachment" (แอดมิน)
 // response
 {
   "cloudName": "...", "apiKey": "...",
@@ -330,7 +363,13 @@ API ตัวนี้ออกแค่ลายเซ็นให้ `api_secr
 **ลายเซ็น** = `sha1(<params เรียงตามตัวอักษร คั่นด้วย &> + api_secret)`
 พารามิเตอร์ที่เซ็นต้องตรงกับที่ browser ส่งเป๊ะๆ — เพิ่ม field ใหม่ต้องเซ็นเพิ่มด้วยเสมอ
 
-**ข้อจำกัดฝั่ง client** (`validateImage()`): JPG / PNG / WebP / GIF ไม่เกิน 5MB
+`uploadUrl` ต่างกันตามชนิดไฟล์: รูปใช้ `/image/upload` · ไฟล์แนบใช้ `/auto/upload`
+(Cloudinary แยกเองว่าเป็นรูปหรือ raw — pdf/zip/docx จะไปเป็น `raw`)
+
+⚠️ **PDF และ ZIP ถูกบล็อกการดาวน์โหลดโดยดีฟอลต์** (ตอบ HTTP 401) ต้องเปิดเองที่
+Cloudinary Console → Settings → Security → **Restricted media types** → ปลดติ๊ก PDF และ ZIP
+
+**ข้อจำกัดฝั่ง client**: รูป (`validateImage()`) JPG/PNG/WebP/GIF ไม่เกิน 5MB · ไฟล์แนบ (`uploadFile()`) ไม่เกิน 20MB
 เป็นการกันแบบหน้าบ้าน ถ้าต้องการบังคับจริงจังให้ตั้ง restrictions ใน Cloudinary dashboard เพิ่ม
 
 ENV ที่ต้องมีใน `server/.env`: `CLOUDINARY_CLOUD_NAME` · `CLOUDINARY_API_KEY` · `CLOUDINARY_API_SECRET`
@@ -352,7 +391,7 @@ ENV ที่ต้องมีใน `server/.env`: `CLOUDINARY_CLOUD_NAME` · 
 - ระบบชำระเงิน**จริง** — ตอนนี้เป็นของจำลองทั้งหมด (ดูหัวข้อ 5)
 - ใบเสร็จ / อีเมลยืนยันการสั่งซื้อ · การขอคืนเงิน
 - อัปโหลด**วิดีโอ** — `videoUrl` ยังรับเป็นลิงก์ YouTube เท่านั้น (รูปอัปโหลดได้แล้ว)
-- จัดการไฟล์แนบ (`attachments`) จากหน้าแอดมิน — ตอนนี้เพิ่มได้ทาง SQL เท่านั้น
 - รูปโปรไฟล์ผู้ใช้ (avatar) — ตาราง `users` ยังไม่มีคอลัมน์เก็บ ต้องเพิ่ม schema ก่อน
-- ลบรูปเก่าออกจาก Cloudinary ตอนเปลี่ยน/ลบรูป — ตอนนี้ไฟล์เดิมยังค้างอยู่บน Cloudinary
+- ลบไฟล์เก่าออกจาก Cloudinary ตอนเปลี่ยน/ลบ — ตอนนี้ไฟล์เดิมยังค้างอยู่บน Cloudinary
+- แบบทดสอบ · เกียรติบัตร · รายงานเชิงลึก/export (ดูสรุป 9 process)
 - สลับลำดับบท/บทเรียนแบบลากวาง — API รับ `order` แล้ว แต่ UI ยังไม่มีปุ่มเลื่อน

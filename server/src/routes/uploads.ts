@@ -13,9 +13,11 @@ const API_SECRET = process.env.CLOUDINARY_API_SECRET || "";
  * โฟลเดอร์ที่อนุญาต — กันไม่ให้ client ส่ง folder อะไรก็ได้เข้ามา
  * key = ชื่อที่ frontend ส่งมา, value = path จริงบน Cloudinary
  */
-const FOLDERS: Record<string, { path: string; adminOnly: boolean }> = {
-  course: { path: "lms/courses", adminOnly: true },
-  community: { path: "lms/community", adminOnly: false },
+const FOLDERS: Record<string, { path: string; adminOnly: boolean; resourceType: "image" | "auto" }> = {
+  course: { path: "lms/courses", adminOnly: true, resourceType: "image" },
+  community: { path: "lms/community", adminOnly: false, resourceType: "image" },
+  // ไฟล์แนบบทเรียน — resource_type "auto" ให้ Cloudinary แยกเองว่าเป็นรูปหรือ raw (pdf/zip/xlsx)
+  attachment: { path: "lms/attachments", adminOnly: true, resourceType: "auto" },
 };
 
 /**
@@ -56,6 +58,6 @@ uploadsRouter.post("/signature", (req, res) => {
     timestamp,
     signature,
     folder: folder.path,
-    uploadUrl: `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/image/upload`,
+    uploadUrl: `https://api.cloudinary.com/v1_1/${CLOUD_NAME}/${folder.resourceType}/upload`,
   });
 });

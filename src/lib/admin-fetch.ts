@@ -18,13 +18,24 @@ export async function adminJson<T = unknown>(res: Response): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-/** "12:30" หรือ "750" → วินาที */
+/**
+ * แปลงความยาวที่พิมพ์มาเป็น "จำนวนวินาที (จำนวนเต็มเสมอ)"
+ *   "750"      → 750 วินาที
+ *   "12:30"    → 750   (นาที:วินาที)
+ *   "12.30"    → 750   (คนไทยพิมพ์จุดแทนโคลอนบ่อย)
+ *   "1:02:03"  → 3723  (ชั่วโมง:นาที:วินาที)
+ * อะไรที่แปลงไม่ได้ → 0 (ไม่ปล่อยค่าทศนิยมหรือ NaN ออกไป เพราะ DB รับแต่จำนวนเต็ม)
+ */
 export function parseDuration(input: string): number {
-  const s = input.trim();
+  const s = String(input ?? "").trim();
   if (!s) return 0;
   if (/^\d+$/.test(s)) return Number(s);
-  const parts = s.split(":").map((p) => Number(p) || 0);
-  return parts.reduce((total, p) => total * 60 + p, 0);
+
+  const parts = s.split(/[:.]/).map((p) => Math.abs(Math.round(Number(p.trim()) || 0)));
+  if (parts.length < 2 || parts.length > 3) return 0;
+
+  const total = parts.reduce((sum, p) => sum * 60 + p, 0);
+  return Number.isFinite(total) ? Math.max(0, Math.round(total)) : 0;
 }
 
 /** วินาที → "12:30" */
