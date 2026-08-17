@@ -17,6 +17,7 @@ import { getYouTubeEmbedUrl, getYouTubeId } from "@/lib/video";
 import { useYouTubeDuration } from "@/lib/youtube-api";
 import ImageUpload from "@/components/ImageUpload";
 import AttachmentManager, { type Attachment } from "@/components/AttachmentManager";
+import QuizEditor from "@/components/QuizEditor";
 
 interface AdminLesson {
   id: string;
@@ -251,6 +252,7 @@ function LessonForm({ lesson, onSave, onCancel, onAddFile, onRemoveFile }: {
           <option value="video">video</option>
           <option value="text">text</option>
           <option value="file">file</option>
+          <option value="quiz">quiz</option>
         </select>
         <div>
           <input value={durationValue} onChange={set("duration")} placeholder="ความยาว เช่น 10:30"
@@ -304,6 +306,16 @@ function LessonForm({ lesson, onSave, onCancel, onAddFile, onRemoveFile }: {
 
       <input value={form.description} onChange={set("description")} placeholder="คำอธิบายสั้นๆ (ไม่บังคับ)"
         className="w-full rounded-lg px-3 py-2 text-sm lms-input" />
+
+      {form.type === "quiz" && (
+        lesson ? (
+          <QuizEditor lessonId={lesson.id} />
+        ) : (
+          <p className="text-[11px]" style={{ color: "var(--lms-text-faint)" }}>
+            บันทึกบทเรียนก่อน แล้วกด &quot;แก้ไข&quot; อีกครั้งเพื่อสร้างข้อสอบ
+          </p>
+        )
+      )}
 
       {lesson && onAddFile && onRemoveFile ? (
         <AttachmentManager attachments={lesson.attachments ?? []} onAdd={onAddFile} onRemove={onRemoveFile} />

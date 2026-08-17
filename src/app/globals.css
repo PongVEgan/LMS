@@ -85,3 +85,29 @@ body {
 }
 .lms-input:focus { border-color: var(--lms-accent); outline: none; }
 .lms-input::placeholder { color: var(--lms-text-faint); }
+
+/* ---- โหมดพิมพ์: ใช้กับหน้าเกียรติบัตร ให้เหลือแต่ใบ ตัดเมนู/ปุ่มทิ้ง ---- */
+@media print {
+  .no-print,
+  aside,
+  header,
+  nav,
+  footer { display: none !important; }
+
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+
+  main { overflow: visible !important; }
+
+  /* ใบเกียรติบัตรพิมพ์เต็มหน้า ไม่ถูกตัดกลาง */
+  .cert {
+    box-shadow: none !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+    max-width: 100% !important;
+  }
+
+  @page { size: A4 landscape; margin: 12mm; }
+}

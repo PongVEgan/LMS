@@ -33,6 +33,38 @@ publicRouter.get("/courses", async (_req, res) => {
   );
 });
 
+/**
+ * GET /public/certificates/:code — ตรวจสอบเกียรติบัตร
+ * เปิดสาธารณะเพื่อให้ HR หรือใครก็ได้เอาเลขที่มาเช็กว่าจริงไหม
+ * คืนเฉพาะข้อมูลที่จำเป็นต่อการยืนยัน ไม่เปิดเผยอีเมลหรือข้อมูลติดต่อ
+ */
+publicRouter.get("/certificates/:code", async (req, res) => {
+  const rows = await q(
+    `SELECT ct.code, ct.issued_at, ct.quiz_percent,
+            coalesce(u.display_name, split_part(u.email, '@', 1)) AS holder,
+            c.title AS course_title
+       FROM certificates ct
+       JOIN users u ON u.id = ct.user_id
+       JOIN courses c ON c.id = ct.course_id
+      WHERE upper(ct.code) = upper($1)`,
+    [req.params.code]
+  );
+
+  if (rows.length === 0) {
+    return res.status(404).json({ valid: false, message: "ไม่พบเกียรติบัตรเลขที่นี้" });
+  }
+
+  const r = rows[0];
+  res.json({
+    valid: true,
+    code: r.code,
+    holder: r.holder,
+    courseTitle: r.course_title,
+    issuedAt: r.issued_at,
+    quizPercent: r.quiz_percent,
+  });
+});
+
 /** GET /public/stats — ตัวเลขไว้โชว์หน้าแรก */
 publicRouter.get("/stats", async (_req, res) => {
   const rows = await q(`

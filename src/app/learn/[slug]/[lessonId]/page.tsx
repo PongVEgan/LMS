@@ -3,6 +3,7 @@
 import { learnFetch, learnPost, LMS_API } from "@/lib/learn-fetch";
 import { getYouTubeId } from "@/lib/video";
 import YouTubePlayer from "@/components/YouTubePlayer";
+import QuizRunner from "@/components/QuizRunner";
 
 import { useSession } from "next-auth/react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -155,7 +156,7 @@ export default function LessonPage() {
   return (
     <div>
       {/* Video */}
-      {(lesson.type === "video" || lesson.videoUrl) && (
+      {lesson.type !== "quiz" && (lesson.type === "video" || lesson.videoUrl) && (
         <div className="p-3 sm:p-5">
           <div className="relative mx-auto max-w-4xl overflow-hidden rounded-lg bg-black" style={{ paddingBottom: "56.25%" }}>
             {ytId ? (
@@ -223,6 +224,13 @@ export default function LessonPage() {
         </div>
 
         <div className="h-px bg-[var(--lms-border)] mb-5" />
+
+        {/* แบบทดสอบ */}
+        {lesson.type === "quiz" && (
+          <div className="mb-6">
+            <QuizRunner lessonId={lessonId} onPassed={() => setCompleted(true)} />
+          </div>
+        )}
 
         {/* Text content */}
         {lesson.type === "text" && lesson.content && (

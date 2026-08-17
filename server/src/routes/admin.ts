@@ -355,6 +355,161 @@ adminRouter.delete("/attachments/:id", async (req, res) => {
   res.json({ ok: true });
 });
 
+/* --------------------------------------------------------------- แบบทดสอบ */
+
+/** GET /admin/lessons/:id/quiz — แบบทดสอบพร้อมเฉลย (ฝั่งแอดมินเห็นได้) */
+adminRouter.get("/lessons/:id/quiz", async (req, res) => {
+  const quiz = await q1("SELECT * FROM quizzes WHERE lesson_id = $1", [req.params.id]);
+  if (!quiz) return res.json(null); // ยังไม่มี = ยังไม่ได้สร้าง ไม่ใช่ error
+
+  const rows = await q(
+    `SELECT qs.id, qs.text, qs.type, qs.score, qs.explanation, qs.sort_order,
+            c.id AS choice_id, c.text AS choice_text, c.is_correct, c.sort_order AS choice_order
+       FROM questions qs
+       LEFT JOIN choices c ON c.question_id = qs.id
+      WHERE qs.quiz_id = $1
+      ORDER BY qs.sort_order, c.sort_order`,
+    [quiz.id]
+  );
+
+  const questions: any[] = [];
+  for (const r of rows) {
+    let question = questions.find((x) => x.id === r.id);
+    if (!question) {
+      question = { id: r.id, text: r.text, type: r.type, score: r.score, explanation: r.explanation, choices: [] };
+      questions.push(question);
+    }
+    if (r.choice_id) {
+      question.choices.push({ id: r.choice_id, text: r.choice_text, isCorrect: r.is_correct });
+    }
+  }
+
+  const stats = await q1(
+    `SELECT count(*)::int AS attempts,
+            count(*) FILTER (WHERE passed)::int AS passed,
+            coalesce(round(avg(percent)), 0)::int AS avg_percent
+       FROM quiz_attempts WHERE quiz_id = $1 AND submitted_at IS NOT NULL`,
+    [quiz.id]
+  );
+
+  res.json({
+    id: quiz.id,
+    title: quiz.title,
+    description: quiz.description,
+    passPercent: quiz.pass_percent,
+    timeLimit: quiz.time_limit,
+    maxAttempts: quiz.max_attempts,
+    shuffle: quiz.shuffle,
+    questions,
+    stats: { attempts: stats!.attempts, passed: stats!.passed, avgPercent: stats!.avg_percent },
+  });
+});
+
+/** PUT /admin/lessons/:id/quiz — สร้างถ้ายังไม่มี ไม่งั้นแก้ค่าที่ส่งมา */
+adminRouter.put("/lessons/:id/quiz", async (req, res) => {
+  const lesson = await q1("SELECT 1 FROM lessons WHERE id = $1", [req.params.id]);
+  if (!lesson) return res.status(404).json({ message: "ไม่พบบทเรียน" });
+
+  const { title, description, passPercent, timeLimit, maxAttempts, shuffle } = req.body ?? {};
+  const row = await q1(
+    `INSERT INTO quizzes (lesson_id, title, description, pass_percent, time_limit, max_attempts, shuffle)
+     VALUES ($1, coalesce($2, 'แบบทดสอบ'), $3, coalesce($4, 70), coalesce($5, 0), coalesce($6, 0), coalesce($7, true))
+     ON CONFLICT (lesson_id) DO UPDATE SET
+       title        = COALESCE($2, quizzes.title),
+       description  = COALESCE($3, quizzes.description),
+       pass_percent = COALESCE($4, quizzes.pass_percent),
+       time_limit   = COALESCE($5, quizzes.time_limit),
+       max_attempts = COALESCE($6, quizzes.max_attempts),
+       shuffle      = COALESCE($7, quizzes.shuffle)
+     RETURNING id`,
+    [
+      req.params.id,
+      title ?? null,
+      description ?? null,
+      toInt(passPercent),
+      toInt(timeLimit),
+      toInt(maxAttempts),
+      shuffle === undefined ? null : !!shuffle,
+    ]
+  );
+  res.json({ id: row!.id });
+});
+
+/** DELETE /admin/lessons/:id/quiz — ลบทั้งชุดพร้อมคำถามและประวัติการทำ */
+adminRouter.delete("/lessons/:id/quiz", async (req, res) => {
+  await q("DELETE FROM quizzes WHERE lesson_id = $1", [req.params.id]);
+  res.json({ ok: true });
+});
+
+/** บันทึกคำถาม 1 ข้อพร้อมตัวเลือก — ใช้ทั้งตอนเพิ่มและตอนแก้ */
+async function saveQuestion(questionId: string, body: any) {
+  const choices: { text: string; isCorrect: boolean }[] = Array.isArray(body?.choices) ? body.choices : [];
+  await q("DELETE FROM choices WHERE question_id = $1", [questionId]);
+  for (const [i, c] of choices.entries()) {
+    const text = String(c?.text ?? "").trim();
+    if (!text) continue;
+    await q(
+      "INSERT INTO choices (question_id, text, is_correct, sort_order) VALUES ($1, $2, $3, $4)",
+      [questionId, text, !!c.isCorrect, i + 1]
+    );
+  }
+}
+
+/** POST /admin/quizzes/:id/questions — { text, type, score, explanation, choices[] } */
+adminRouter.post("/quizzes/:id/questions", async (req, res) => {
+  const text = String(req.body?.text ?? "").trim();
+  if (!text) return res.status(400).json({ message: "ต้องมีคำถาม" });
+
+  const next = await q1<{ n: number }>(
+    "SELECT coalesce(max(sort_order), 0) + 1 AS n FROM questions WHERE quiz_id = $1",
+    [req.params.id]
+  );
+  const row = await q1(
+    `INSERT INTO questions (quiz_id, text, type, score, explanation, sort_order)
+     VALUES ($1, $2, $3, $4, $5, $6) RETURNING id`,
+    [
+      req.params.id,
+      text,
+      req.body?.type === "multiple" ? "multiple" : "single",
+      toInt(req.body?.score, 1),
+      req.body?.explanation ?? null,
+      next!.n,
+    ]
+  );
+  await saveQuestion(row!.id, req.body);
+  res.status(201).json({ id: row!.id });
+});
+
+/** PUT /admin/questions/:id */
+adminRouter.put("/questions/:id", async (req, res) => {
+  const { text, type, score, explanation, order } = req.body ?? {};
+  await q(
+    `UPDATE questions
+        SET text        = COALESCE($1, text),
+            type        = COALESCE($2, type),
+            score       = COALESCE($3, score),
+            explanation = COALESCE($4, explanation),
+            sort_order  = COALESCE($5, sort_order)
+      WHERE id = $6`,
+    [
+      text ?? null,
+      type === "multiple" || type === "single" ? type : null,
+      toInt(score),
+      explanation ?? null,
+      toInt(order),
+      req.params.id,
+    ]
+  );
+  if (Array.isArray(req.body?.choices)) await saveQuestion(req.params.id, req.body);
+  res.json({ ok: true });
+});
+
+/** DELETE /admin/questions/:id */
+adminRouter.delete("/questions/:id", async (req, res) => {
+  await q("DELETE FROM questions WHERE id = $1", [req.params.id]);
+  res.json({ ok: true });
+});
+
 /* ------------------------------------------------------ หมวดหมู่คอมมูนิตี้ */
 
 /** GET /admin/categories — รวมที่ปิดใช้งานด้วย */

@@ -8,6 +8,9 @@ import { adminRouter } from "./routes/admin.js";
 import { uploadsRouter } from "./routes/uploads.js";
 import { checkoutRouter } from "./routes/checkout.js";
 import { publicRouter } from "./routes/public.js";
+import { quizRouter } from "./routes/quiz.js";
+import { certificateRouter } from "./routes/certificates.js";
+import { reportRouter } from "./routes/reports.js";
 import { pool } from "./db/pool.js";
 
 const app = express();
@@ -27,12 +30,17 @@ app.get("/api/health", async (_req, res) => {
 
 app.use("/api/public", publicRouter);
 app.use("/api/auth", authRouter);
+// quiz/certificate อยู่ใต้ /api/learn เหมือนกัน ต้อง mount ก่อน learnRouter
+// ไม่งั้น learnRouter จะกิน path ที่ชื่อคล้ายกันไปก่อน
+app.use("/api/learn", quizRouter);
+app.use("/api/learn", certificateRouter);
 app.use("/api/learn", learnRouter);
 app.use("/api/community", communityRouter);
 app.use("/api/uploads", uploadsRouter);
 app.use("/api/checkout", checkoutRouter);
 // /api/admin/community ต้องมาก่อน /api/admin เพราะ express จับตามลำดับที่ mount
 app.use("/api/admin/community", adminCommunityRouter);
+app.use("/api/admin/reports", reportRouter);
 app.use("/api/admin", adminRouter);
 
 app.use((_req, res) => res.status(404).json({ message: "ไม่พบ endpoint นี้" }));

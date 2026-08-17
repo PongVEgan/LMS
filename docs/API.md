@@ -28,6 +28,10 @@
 |---|---|---|
 | GET | `/public/courses` | คอร์สที่ `published = true` + `lessonCount` `totalDuration` (วินาที) `studentCount` |
 | GET | `/public/stats` | `{ courses, lessons, students }` |
+| GET | `/public/certificates/:code` | ตรวจสอบเกียรติบัตร — `{ valid, code, holder, courseTitle, issuedAt, quizPercent }` · ไม่พบ → 404 `{ valid: false }` |
+
+> เส้นตรวจสอบเกียรติบัตรเปิดสาธารณะโดยตั้งใจ (ให้ HR/บุคคลภายนอกเช็กได้)
+> คืนเฉพาะชื่อผู้ถือกับชื่อคอร์ส **ไม่เปิดเผยอีเมลหรือข้อมูลติดต่อ**
 
 ---
 
@@ -242,6 +246,30 @@ next-auth Credentials provider เรียกฝั่ง server
 
 ---
 
+## 3.5 แบบทดสอบ (ผู้เรียน)
+
+| Method | Path | หมายเหตุ |
+|---|---|---|
+| GET | `/learn/quizzes/:lessonId` | โจทย์ + ตัวเลือก + ประวัติการทำ · **ไม่ส่ง `isCorrect` ออกไปเด็ดขาด** · สลับข้อถ้าตั้ง `shuffle` |
+| POST | `/learn/quizzes/:lessonId/attempts` | เริ่มทำ → `{ attemptId, startedAt, timeLimit }` · ทำครบโควตา → 409 |
+| POST | `/learn/attempts/:id/submit` | `{ answers: [{ questionId, choiceIds[] }] }` · ส่งซ้ำ → 409 |
+
+**การตรวจ:** ต้องเลือกให้ตรงทั้งชุด (ไม่ขาดไม่เกิน) ถึงได้คะแนนข้อนั้น
+ผลลัพธ์คืนรายข้อพร้อม `correctIds` และ `explanation` — **เฉลยโผล่หลังส่งคำตอบเท่านั้น**
+สอบผ่าน = ระบบติ๊กบทเรียนนั้นว่าเรียนจบให้เลย และเช็กว่าจบคอร์สครบหรือยัง
+
+## 3.6 เกียรติบัตร (ผู้เรียน)
+
+| Method | Path | หมายเหตุ |
+|---|---|---|
+| GET | `/learn/certificates` | เกียรติบัตรทั้งหมดของตัวเอง |
+| GET | `/learn/courses/:slug/completion` | ความคืบหน้าสู่เกียรติบัตร — **ครบเงื่อนไขแล้วจะออกให้ทันทีตรงนี้** |
+
+**เงื่อนไขออกเกียรติบัตร:** เรียนครบทุกบทเรียน **และ** สอบผ่านทุกแบบทดสอบในคอร์ส
+เลขที่รูปแบบ `CERT-XXXXXXXX` · 1 ใบต่อ 1 คอร์สต่อ 1 คน (unique) · ออกซ้ำไม่ได้เลขใหม่
+
+---
+
 ## 4. Admin backoffice (`/admin/*`)
 
 ทุกเส้นต้อง `x-user-email` ของบัญชีที่ `role = 'admin'` — ไม่ใช่แอดมินตอบ **403**
@@ -287,6 +315,28 @@ next-auth Credentials provider เรียกฝั่ง server
 | POST | `/admin/categories` | `{ slug, label, order? }` — slug ตรง `^[a-z0-9-]+$` ซ้ำ → 409 |
 | PUT | `/admin/categories/:id` | `{ label?, order?, active? }` — **slug แก้ไม่ได้** (โพสต์อ้างอิงอยู่) |
 | DELETE | `/admin/categories/:id` | มีโพสต์ในหมวดนั้น → 409 ให้ปิดใช้งานแทน |
+
+### แบบทดสอบ
+| Method | Path | Body / หมายเหตุ |
+|---|---|---|
+| GET | `/admin/lessons/:id/quiz` | แบบทดสอบพร้อมเฉลย + สถิติ · ยังไม่มี → คืน `null` (ไม่ใช่ 404) |
+| PUT | `/admin/lessons/:id/quiz` | `{ title?, passPercent?, timeLimit?, maxAttempts?, shuffle? }` — ไม่มีก็สร้างให้ |
+| DELETE | `/admin/lessons/:id/quiz` | ลบทั้งชุดพร้อมคำถามและประวัติการทำ |
+| POST | `/admin/quizzes/:id/questions` | `{ text, type, score, explanation, choices: [{ text, isCorrect }] }` |
+| PUT / DELETE | `/admin/questions/:id` | ส่ง `choices` มาด้วย = เขียนทับตัวเลือกทั้งชุด |
+
+### รายงาน (`/admin/reports/*`)
+ทุกเส้นรับ `?from=YYYY-MM-DD&to=YYYY-MM-DD` · ไม่ส่ง = ย้อนหลัง 30 วัน
+
+| Method | Path | คืนอะไร |
+|---|---|---|
+| GET | `/admin/reports/overview` | ยอดขาย ผู้ใช้ใหม่ ลงทะเบียน สอบผ่าน เกียรติบัตร + กราฟรายวัน |
+| GET | `/admin/reports/courses` | รายคอร์ส: ผู้เรียน ความคืบหน้าเฉลี่ย คะแนนสอบเฉลี่ย ยอดขาย |
+| GET | `/admin/reports/students?courseId=` | รายคน: เรียนไปกี่บท กี่ % คะแนนสอบ เลขเกียรติบัตร |
+| GET | `/admin/reports/orders` | ยอดขายรายรายการ |
+| GET | `/admin/reports/certificates` | เกียรติบัตรที่ออกไปแล้วทั้งหมด |
+
+> CSV สร้างฝั่ง browser (`src/lib/csv.ts`) — ใส่ BOM ไว้ให้ Excel อ่านภาษาไทยออก
 
 ### ผู้เรียน
 | Method | Path | Body / หมายเหตุ |
@@ -393,5 +443,6 @@ ENV ที่ต้องมีใน `server/.env`: `CLOUDINARY_CLOUD_NAME` · 
 - อัปโหลด**วิดีโอ** — `videoUrl` ยังรับเป็นลิงก์ YouTube เท่านั้น (รูปอัปโหลดได้แล้ว)
 - รูปโปรไฟล์ผู้ใช้ (avatar) — ตาราง `users` ยังไม่มีคอลัมน์เก็บ ต้องเพิ่ม schema ก่อน
 - ลบไฟล์เก่าออกจาก Cloudinary ตอนเปลี่ยน/ลบ — ตอนนี้ไฟล์เดิมยังค้างอยู่บน Cloudinary
-- แบบทดสอบ · เกียรติบัตร · รายงานเชิงลึก/export (ดูสรุป 9 process)
+- ระบบส่งอีเมล (ยืนยันการสมัคร · ลิงก์รีเซ็ตรหัสผ่าน · แจ้งเมื่อได้เกียรติบัตร)
+- คำถามแบบเติมคำ/อัตนัย (ตอนนี้มีเฉพาะปรนัยเลือกเดียวและเลือกหลายข้อ)
 - สลับลำดับบท/บทเรียนแบบลากวาง — API รับ `order` แล้ว แต่ UI ยังไม่มีปุ่มเลื่อน

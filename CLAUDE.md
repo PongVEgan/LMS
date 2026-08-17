@@ -47,6 +47,8 @@ server/src/
   lib/password.ts (scrypt) · lib/user.ts (requireUser / requireAdmin)
   routes/public.ts (ไม่ต้อง auth) · routes/auth.ts · routes/learn.ts · routes/community.ts
   routes/admin.ts · routes/checkout.ts · routes/uploads.ts
+  routes/quiz.ts (แบบทดสอบ) · routes/certificates.ts · routes/reports.ts
+  lib/completion.ts — เช็กจบคอร์ส + ออกเกียรติบัตรอัตโนมัติ
 ```
 
 ## Admin (`/admin`)
@@ -67,6 +69,19 @@ server/src/
 ## หมวดหมู่คอมมูนิตี้
 - อยู่ในตาราง `post_categories` จัดการที่ `/admin/categories` — **ห้าม hardcode กลับลงโค้ด**
 - `slug` แก้ไม่ได้หลังสร้าง (โพสต์เก็บ slug ไว้ตรงๆ) · หมวดที่มีโพสต์ลบไม่ได้ ให้ปิดใช้งานแทน
+
+## แบบทดสอบ / เกียรติบัตร
+- **ห้ามส่งเฉลย (`isCorrect`) ไปฝั่งผู้เรียนก่อนส่งคำตอบ** — `routes/quiz.ts` แยก query คนละชุดกับฝั่งแอดมินไว้แล้ว
+- ตรวจข้อสอบที่เซิร์ฟเวอร์เท่านั้น · เลือกหลายข้อต้องตรงทั้งชุดถึงได้คะแนน
+- สอบผ่าน → ติ๊ก progress ของบทเรียนนั้นให้อัตโนมัติ
+- เกียรติบัตรออกอัตโนมัติผ่าน `checkCourseCompletion()` เมื่อ **เรียนครบทุกบท + สอบผ่านทุกชุด**
+  เรียกจากทั้ง `POST /learn/progress` (ทางอ้อม) และตอนส่งข้อสอบ
+- `/verify/[code]` เป็นหน้า public — คืนแค่ชื่อผู้ถือกับคอร์ส **ห้ามเพิ่มอีเมลหรือข้อมูลติดต่อลงไป**
+- โหมดพิมพ์ใช้ class `.no-print` + `.cert` ใน `globals.css` (A4 แนวนอน)
+
+## รายงาน
+- `/admin/reports` — ทุก endpoint รับ `from`/`to` · CSV สร้างฝั่ง browser ที่ `src/lib/csv.ts`
+- **CSV ต้องมี BOM** (`﻿`) ไม่งั้น Excel บน Windows อ่านภาษาไทยเป็นตัวยึกยือ
 
 ## กติกาสำคัญ
 - **ห้าม hardcode โดเมน/คีย์/ชื่อแบรนด์ลงในโค้ด** — ทุกอย่างผ่าน env ใน `src/lib/site.ts`
@@ -110,6 +125,8 @@ server/src/
 - ลิงก์ที่ไม่ใช่ YouTube จะขึ้น "ลิงก์วิดีโอไม่ถูกต้อง" — ไม่มี player สำรอง อย่าเพิ่มกลับถ้าไม่ได้สั่ง
 
 ## สิ่งที่ยังไม่มี
+- ระบบส่งอีเมลจริง (ยืนยันสมัคร · ลิงก์รีเซ็ตรหัส · แจ้งเกียรติบัตร)
+- คำถามแบบเติมคำ/อัตนัย (มีเฉพาะปรนัย)
 - ระบบชำระเงิน**จริง** — ตอนนี้เป็น mock ที่ `server/src/routes/checkout.ts` (ดูหัวข้อ Checkout)
 - ใบเสร็จ / อีเมลยืนยันการสั่งซื้อ / คืนเงิน
 - อัปโหลดวิดีโอและไฟล์แนบ (รูปอัปโหลดได้แล้ว วิดีโอยังรับเป็นลิงก์ YouTube)
