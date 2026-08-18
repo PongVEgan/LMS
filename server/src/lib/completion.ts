@@ -16,7 +16,8 @@ export interface CourseCompletion {
   certificateCode: string | null;
 }
 
-const newCode = () => `CERT-${randomBytes(4).toString("hex").toUpperCase()}`;
+// 8 ไบต์ = 64 บิต โอกาสชนต่ำมาก และยังมี retry เผื่อไว้อีกชั้น
+const newCode = () => `CERT-${randomBytes(8).toString("hex").toUpperCase()}`;
 
 export async function checkCourseCompletion(userId: string, courseId: string): Promise<CourseCompletion> {
   const lessons = await q1<{ total: number; done: number }>(
@@ -30,6 +31,8 @@ export async function checkCourseCompletion(userId: string, courseId: string): P
   );
 
   // แบบทดสอบทุกชุดในคอร์ส + ผลสอบครั้งที่ดีที่สุดของผู้เรียนคนนี้
+  // ข้ามชุดที่ยังไม่มีคำถาม — ไม่งั้นแอดมินกดสร้างชุดเปล่าทิ้งไว้
+  // จะทำให้ทุกคนในคอร์สไม่มีวันได้เกียรติบัตร (สอบชุดเปล่ายังไงก็ได้ 0%)
   const quizzes = await q<{ quiz_id: string; best: number | null; passed: boolean | null }>(
     `SELECT z.id AS quiz_id,
             max(a.percent) AS best,
@@ -39,6 +42,7 @@ export async function checkCourseCompletion(userId: string, courseId: string): P
        JOIN chapters ch ON ch.id = l.chapter_id
        LEFT JOIN quiz_attempts a ON a.quiz_id = z.id AND a.user_id = $2 AND a.submitted_at IS NOT NULL
       WHERE ch.course_id = $1
+        AND EXISTS (SELECT 1 FROM questions WHERE quiz_id = z.id)
       GROUP BY z.id`,
     [courseId, userId]
   );
@@ -64,14 +68,22 @@ export async function checkCourseCompletion(userId: string, courseId: string): P
     if (existing) {
       certificateCode = existing.code;
     } else {
-      const row = await q1<{ code: string }>(
-        `INSERT INTO certificates (user_id, course_id, code, quiz_percent)
-         VALUES ($1, $2, $3, $4)
-         ON CONFLICT (user_id, course_id) DO UPDATE SET code = certificates.code
-         RETURNING code`,
-        [userId, courseId, newCode(), quizPercent]
-      );
-      certificateCode = row?.code ?? null;
+      // ถ้าเลขชนกัน (unique violation) ให้สุ่มใหม่ ไม่ปล่อยให้ error หลุดไปทำลาย
+      // response ของการส่งข้อสอบที่ตรวจเสร็จแล้ว
+      for (let attempt = 0; attempt < 3 && !certificateCode; attempt++) {
+        try {
+          const row = await q1<{ code: string }>(
+            `INSERT INTO certificates (user_id, course_id, code, quiz_percent)
+             VALUES ($1, $2, $3, $4)
+             ON CONFLICT (user_id, course_id) DO UPDATE SET code = certificates.code
+             RETURNING code`,
+            [userId, courseId, newCode(), quizPercent]
+          );
+          certificateCode = row?.code ?? null;
+        } catch (err) {
+          if ((err as { code?: string }).code !== "23505") throw err;
+        }
+      }
     }
   }
 

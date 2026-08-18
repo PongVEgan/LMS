@@ -22,7 +22,7 @@ export default async function VerifyPage({ params }: { params: Promise<{ code: s
   const cert = await verify(code);
 
   return (
-    <div className="min-h-screen" style={{ background: "var(--lms-bg)", color: "var(--lms-text)" }}>
+    <div className="cert-page min-h-screen" style={{ background: "var(--lms-bg)", color: "var(--lms-text)" }}>
       <header className="no-print" style={{ borderBottom: "1px solid var(--lms-border)" }}>
         <div className="mx-auto flex h-14 max-w-3xl items-center gap-2 px-4 sm:px-6">
           <Link href="/" className="flex items-center gap-2">

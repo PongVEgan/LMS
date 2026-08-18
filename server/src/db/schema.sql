@@ -1,5 +1,6 @@
 -- โครงฐานข้อมูล LMS (dev) — รันซ้ำได้ ไฟล์นี้ลบของเดิมทิ้งก่อนเสมอ
 DROP TABLE IF EXISTS comment_likes, post_likes, comments, posts, post_categories,
+  attempt_answers, quiz_attempts, choices, questions, quizzes, certificates,
   password_resets, progress, attachments, lessons, chapters,
   orders, enrollments, courses, users CASCADE;
 
@@ -53,7 +54,7 @@ CREATE TABLE lessons (
   chapter_id  uuid NOT NULL REFERENCES chapters(id) ON DELETE CASCADE,
   title       text NOT NULL,
   description text,
-  type        text NOT NULL DEFAULT 'video' CHECK (type IN ('video', 'text', 'file')),
+  type        text NOT NULL DEFAULT 'video' CHECK (type IN ('video', 'text', 'file', 'quiz')),
   content     text,                          -- ใช้เมื่อ type = 'text'
   video_url   text,                          -- ลิงก์ YouTube เท่านั้น
   duration    integer NOT NULL DEFAULT 0,    -- วินาที
@@ -149,6 +150,72 @@ CREATE TABLE comment_likes (
   PRIMARY KEY (comment_id, user_id)
 );
 
+-- ===== แบบทดสอบ =====
+CREATE TABLE quizzes (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  lesson_id    uuid UNIQUE NOT NULL REFERENCES lessons(id) ON DELETE CASCADE,
+  title        text NOT NULL DEFAULT 'แบบทดสอบ',
+  description  text,
+  pass_percent integer NOT NULL DEFAULT 70,   -- เกณฑ์ผ่าน (%)
+  time_limit   integer NOT NULL DEFAULT 0,    -- นาที · 0 = ไม่จำกัดเวลา
+  max_attempts integer NOT NULL DEFAULT 0,    -- 0 = ทำซ้ำได้ไม่จำกัด
+  shuffle      boolean NOT NULL DEFAULT true,
+  created_at   timestamptz NOT NULL DEFAULT now()
+);
+
+CREATE TABLE questions (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id     uuid NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  text        text NOT NULL,
+  type        text NOT NULL DEFAULT 'single' CHECK (type IN ('single', 'multiple')),
+  explanation text,
+  score       integer NOT NULL DEFAULT 1,
+  sort_order  integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE choices (
+  id          uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  question_id uuid NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  text        text NOT NULL,
+  is_correct  boolean NOT NULL DEFAULT false,
+  sort_order  integer NOT NULL DEFAULT 0
+);
+
+CREATE TABLE quiz_attempts (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  quiz_id      uuid NOT NULL REFERENCES quizzes(id) ON DELETE CASCADE,
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  started_at   timestamptz NOT NULL DEFAULT now(),
+  submitted_at timestamptz,
+  score        integer NOT NULL DEFAULT 0,
+  max_score    integer NOT NULL DEFAULT 0,
+  percent      integer NOT NULL DEFAULT 0,
+  passed       boolean NOT NULL DEFAULT false
+);
+
+CREATE TABLE attempt_answers (
+  attempt_id  uuid NOT NULL REFERENCES quiz_attempts(id) ON DELETE CASCADE,
+  question_id uuid NOT NULL REFERENCES questions(id) ON DELETE CASCADE,
+  choice_ids  uuid[] NOT NULL DEFAULT '{}',
+  correct     boolean NOT NULL DEFAULT false,
+  PRIMARY KEY (attempt_id, question_id)
+);
+
+-- ===== เกียรติบัตร =====
+CREATE TABLE certificates (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id      uuid NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  course_id    uuid NOT NULL REFERENCES courses(id) ON DELETE CASCADE,
+  code         text UNIQUE NOT NULL,
+  issued_at    timestamptz NOT NULL DEFAULT now(),
+  quiz_percent integer,
+  UNIQUE (user_id, course_id)
+);
+
+CREATE INDEX ON questions (quiz_id, sort_order);
+CREATE INDEX ON choices (question_id, sort_order);
+CREATE INDEX ON quiz_attempts (user_id, quiz_id, submitted_at DESC);
+CREATE INDEX ON certificates (user_id, issued_at DESC);
 CREATE INDEX ON orders (user_id, created_at DESC);
 CREATE INDEX ON chapters (course_id, sort_order);
 CREATE INDEX ON lessons (chapter_id, sort_order);

@@ -70,7 +70,7 @@ export default function AdminReportsPage() {
     Promise.all([
       adminGet(`/reports/overview?${range}`).then(adminJson<Overview>),
       adminGet(`/reports/courses?${range}`).then(adminJson<CourseRow[]>),
-      adminGet(`/reports/students`).then(adminJson<StudentRow[]>),
+      adminGet(`/reports/students?${range}`).then(adminJson<StudentRow[]>),
       adminGet(`/reports/orders?${range}`).then(adminJson<OrderRow[]>),
       adminGet(`/reports/certificates`).then(adminJson<CertRow[]>),
     ])

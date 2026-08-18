@@ -86,20 +86,21 @@ body {
 .lms-input:focus { border-color: var(--lms-accent); outline: none; }
 .lms-input::placeholder { color: var(--lms-text-faint); }
 
-/* ---- โหมดพิมพ์: ใช้กับหน้าเกียรติบัตร ให้เหลือแต่ใบ ตัดเมนู/ปุ่มทิ้ง ---- */
+/* ---- โหมดพิมพ์ ----
+   จำกัดเฉพาะหน้าที่มี .cert-page เท่านั้น (หน้าเกียรติบัตร)
+   ถ้าปล่อยเป็น global หน้าอื่นจะพิมพ์ออกมาขาวโพลนเพราะพื้นถูกบังคับเป็นขาว
+   แต่ตัวอักษรยังใช้ตัวแปรธีมมืดอยู่ */
 @media print {
-  .no-print,
-  aside,
-  header,
-  nav,
-  footer { display: none !important; }
+  .cert-page .no-print,
+  .cert-page aside,
+  .cert-page header,
+  .cert-page nav,
+  .cert-page footer { display: none !important; }
 
-  html, body {
-    background: #fff !important;
-    color: #000 !important;
-  }
+  .cert-page,
+  .cert-page * { color: #1a1a19 !important; }
 
-  main { overflow: visible !important; }
+  .cert-page { background: #fff !important; }
 
   /* ใบเกียรติบัตรพิมพ์เต็มหน้า ไม่ถูกตัดกลาง */
   .cert {

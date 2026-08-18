@@ -24,6 +24,12 @@ function AdminShell({ children }: { children: React.ReactNode }) {
 
   const role = (session?.user as { role?: string } | undefined)?.role;
 
+  // learn-fetch อ่านอีเมลจาก sessionStorage — ถ้าเปิด /admin ในแท็บใหม่โดยไม่แวะ /learn ก่อน
+  // ค่านี้จะว่างและ API ทุกเส้นจะ 401 ตั้งให้ตรงนี้ด้วยเลย
+  if (typeof window !== "undefined" && session?.user?.email) {
+    sessionStorage.setItem("learn-email", session.user.email);
+  }
+
   if (status === "loading") {
     return (
       <div data-theme="dark" className="flex min-h-screen items-center justify-center" style={{ background: "var(--lms-bg)" }}>

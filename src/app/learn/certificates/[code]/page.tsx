@@ -38,7 +38,7 @@ export default function CertificateViewPage() {
   if (!cert) return <div className="p-6 text-sm" style={{ color: "var(--lms-text-muted)" }}>กำลังโหลด...</div>;
 
   return (
-    <div className="mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
+    <div className="cert-page mx-auto w-full max-w-3xl px-4 py-6 sm:px-6">
       <div className="no-print mb-4 flex flex-wrap items-center justify-between gap-3">
         <Link href="/learn/certificates" className="text-xs hover:underline" style={{ color: "var(--lms-text-muted)" }}>
           ← เกียรติบัตรทั้งหมด

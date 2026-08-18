@@ -6,14 +6,30 @@ import { requireAdmin, requireUser } from "../lib/user.js";
 export const reportRouter = Router();
 reportRouter.use(requireUser, requireAdmin);
 
-/** ไม่ส่งช่วงเวลามา = ย้อนหลัง 30 วัน · to นับรวมทั้งวัน */
+const MAX_RANGE_DAYS = 366;
+
+/** วันที่ตามเวลาไทย ไม่ใช่ UTC — ไม่งั้นช่วงเที่ยงคืนถึง 7 โมงเช้าจะได้วันที่ของเมื่อวาน */
+function bangkokDate(offsetDays = 0) {
+  const d = new Date(Date.now() + offsetDays * 86400000);
+  return d.toLocaleDateString("sv-SE", { timeZone: "Asia/Bangkok" });
+}
+
+/**
+ * ไม่ส่งช่วงเวลามา = ย้อนหลัง 30 วัน · to นับรวมทั้งวัน
+ * จำกัดความกว้างไม่เกิน 366 วัน — generate_series กับช่วงหลายพันปี
+ * (เช่นพิมพ์ปีผิดเป็น 0002) จะสร้างแถวเป็นแสนและค้างทั้ง connection
+ */
 function range(req: { query: Record<string, unknown> }) {
-  const to = String(req.query.to || "").match(/^\d{4}-\d{2}-\d{2}$/)
-    ? String(req.query.to)
-    : new Date().toISOString().slice(0, 10);
-  const from = String(req.query.from || "").match(/^\d{4}-\d{2}-\d{2}$/)
-    ? String(req.query.from)
-    : new Date(Date.now() - 29 * 86400000).toISOString().slice(0, 10);
+  const valid = (v: unknown) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || ""));
+  let to = valid(req.query.to) ? String(req.query.to) : bangkokDate();
+  let from = valid(req.query.from) ? String(req.query.from) : bangkokDate(-29);
+
+  if (from > to) [from, to] = [to, from]; // สลับให้ถูกถ้ากรอกกลับกัน
+
+  const span = (Date.parse(to) - Date.parse(from)) / 86400000;
+  if (!Number.isFinite(span) || span > MAX_RANGE_DAYS) {
+    from = new Date(Date.parse(to) - MAX_RANGE_DAYS * 86400000).toISOString().slice(0, 10);
+  }
   return { from, to };
 }
 
@@ -115,9 +131,10 @@ reportRouter.get("/courses", async (req, res) => {
   );
 });
 
-/** GET /admin/reports/students?courseId= — ความคืบหน้ารายคน (ใช้ทำ CSV) */
+/** GET /admin/reports/students?courseId=&from=&to= — ความคืบหน้ารายคน (ใช้ทำ CSV) */
 reportRouter.get("/students", async (req, res) => {
   const courseId = String(req.query.courseId || "");
+  const { from, to } = range(req);
 
   const rows = await q(
     `SELECT u.email, coalesce(u.display_name, '') AS name, c.title AS course_title,
@@ -146,8 +163,9 @@ reportRouter.get("/students", async (req, res) => {
           WHERE ch.course_id = c.id
        ) lc
       WHERE ($1 = '' OR c.id::text = $1)
+        AND e.enrolled_at::date BETWEEN $2 AND $3
       ORDER BY c.title, percent DESC, u.email`,
-    [courseId]
+    [courseId, from, to]
   );
 
   res.json(
@@ -172,8 +190,10 @@ reportRouter.get("/orders", async (req, res) => {
     `SELECT o.reference, o.amount, o.method, o.status, o.created_at, o.paid_at,
             u.email, c.title AS course_title
        FROM orders o JOIN users u ON u.id = o.user_id JOIN courses c ON c.id = o.course_id
-      WHERE o.created_at::date BETWEEN $1 AND $2
-      ORDER BY o.created_at DESC`,
+      -- ใช้ paid_at เป็นหลักให้ตรงกับตัวเลขยอดขายใน overview
+      -- (ออร์เดอร์ที่ยังไม่จ่ายใช้ created_at ไปก่อน)
+      WHERE coalesce(o.paid_at, o.created_at)::date BETWEEN $1 AND $2
+      ORDER BY coalesce(o.paid_at, o.created_at) DESC`,
     [from, to]
   );
   res.json(

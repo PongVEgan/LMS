@@ -1,6 +1,7 @@
 import { Router } from "express";
 import { q, q1 } from "../db/pool.js";
 import { requireUser } from "../lib/user.js";
+import { checkCourseCompletion } from "../lib/completion.js";
 
 export const learnRouter = Router();
 learnRouter.use(requireUser);
@@ -220,10 +221,15 @@ learnRouter.post("/progress", async (req, res) => {
     [req.user!.id, lessonId, markComplete, pos, percent, watchedSec, completed === false]
   );
 
+  // เรียนจบบทนี้แล้วอาจจะจบทั้งคอร์สพอดี — เช็กและออกเกียรติบัตรให้ตรงนี้
+  // (ไม่ได้เช็กแค่ตอนส่งข้อสอบ เพราะคอร์สที่ไม่มีข้อสอบจะไม่มีวันได้เกียรติบัตรเลย)
+  const completion = row!.completed ? await checkCourseCompletion(req.user!.id, lesson.course_id) : null;
+
   res.json({
     ok: true,
     completed: row!.completed,
     watchedPercent: row!.watched_percent,
     position: row!.position_seconds,
+    certificateCode: completion?.certificateCode ?? null,
   });
 });

@@ -121,13 +121,39 @@ quizRouter.post("/quizzes/:lessonId/attempts", async (req, res) => {
  */
 quizRouter.post("/attempts/:id/submit", async (req, res) => {
   const attempt = await q1(
-    `SELECT a.*, z.pass_percent, z.lesson_id, z.time_limit
+    `SELECT a.*, z.pass_percent, z.lesson_id, z.time_limit, z.max_attempts
        FROM quiz_attempts a JOIN quizzes z ON z.id = a.quiz_id
       WHERE a.id = $1 AND a.user_id = $2`,
     [req.params.id, req.user!.id]
   );
   if (!attempt) return res.status(404).json({ message: "ไม่พบการทำข้อสอบครั้งนี้" });
   if (attempt.submitted_at) return res.status(409).json({ message: "ส่งคำตอบไปแล้ว" });
+
+  // เช็คโควตาอีกรอบตอนส่ง — ตอนสร้าง attempt เช็คแล้วก็จริง แต่เปิดหลายแท็บพร้อมกัน
+  // จะสร้างได้หลาย attempt ก่อนที่อันไหนจะถูกส่ง ทำให้ทำเกินจำนวนครั้งที่กำหนดได้
+  if (attempt.max_attempts > 0) {
+    const done = await q1<{ n: number }>(
+      "SELECT count(*)::int AS n FROM quiz_attempts WHERE quiz_id = $1 AND user_id = $2 AND submitted_at IS NOT NULL",
+      [attempt.quiz_id, req.user!.id]
+    );
+    if (done!.n >= attempt.max_attempts) {
+      await q("DELETE FROM quiz_attempts WHERE id = $1", [attempt.id]);
+      return res.status(409).json({ message: `ทำข้อสอบครบ ${attempt.max_attempts} ครั้งแล้ว` });
+    }
+  }
+
+  // หมดเวลาแล้วส่งไม่ได้ (ตัวนับถอยหลังอยู่ฝั่ง browser ปลอมได้ ต้องกันที่เซิร์ฟเวอร์ด้วย)
+  // เผื่อเวลาให้ 60 วินาทีกันเน็ตหน่วงตอนกดส่งพอดี
+  if (attempt.time_limit > 0) {
+    const elapsed = (Date.now() - new Date(attempt.started_at).getTime()) / 1000;
+    if (elapsed > attempt.time_limit * 60 + 60) {
+      await q(
+        "UPDATE quiz_attempts SET submitted_at = now(), score = 0, max_score = 0, percent = 0, passed = false WHERE id = $1",
+        [attempt.id]
+      );
+      return res.status(409).json({ message: "หมดเวลาทำข้อสอบแล้ว" });
+    }
+  }
 
   const answers: { questionId: string; choiceIds: string[] }[] = Array.isArray(req.body?.answers)
     ? req.body.answers
@@ -160,14 +186,30 @@ quizRouter.post("/attempts/:id/submit", async (req, res) => {
   let maxScore = 0;
   const results = [];
 
+  // ตัวเลือกที่ส่งมาต้องเป็น uuid จริง ไม่งั้น Postgres จะพังตอน insert เข้า uuid[]
+  const isUuid = (v: unknown) =>
+    typeof v === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);
+
   for (const question of questions) {
     maxScore += question.score;
-    const picked = (answers.find((a) => a.questionId === question.id)?.choiceIds ?? []).filter(Boolean);
+    const ownChoiceIds: string[] = question.choices.map((c: any) => c.id);
+
+    // ต้อง de-dup และตัดตัวเลือกที่ไม่ใช่ของข้อนี้ทิ้ง
+    // ไม่งั้นส่ง ["c1","c1"] มาแทน ["c1","c2"] จะนับว่าตอบถูกทั้งที่รู้คำตอบแค่ข้อเดียว
+    const picked = [
+      ...new Set(
+        (answers.find((a) => a.questionId === question.id)?.choiceIds ?? [])
+          .filter(isUuid)
+          .filter((id: string) => ownChoiceIds.includes(id))
+      ),
+    ];
     const correctIds = question.choices.filter((c: any) => c.isCorrect).map((c: any) => c.id);
 
-    // ต้องเลือกให้ตรงทั้งชุด (ไม่ขาดไม่เกิน) ถึงจะได้คะแนน
+    // ข้อที่ไม่ได้ตั้งคำตอบถูกไว้ = ข้อเสีย ไม่ให้คะแนนใคร (เดิม [] === [] จะกลายเป็นตอบถูกทุกคน)
     const isCorrect =
-      picked.length === correctIds.length && picked.every((id: string) => correctIds.includes(id));
+      correctIds.length > 0 &&
+      picked.length === correctIds.length &&
+      picked.every((id: string) => correctIds.includes(id));
     if (isCorrect) score += question.score;
 
     await q(

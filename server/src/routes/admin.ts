@@ -441,6 +441,15 @@ adminRouter.delete("/lessons/:id/quiz", async (req, res) => {
   res.json({ ok: true });
 });
 
+/** ตรวจตัวเลือกก่อนบันทึก — ข้อที่ไม่มีคำตอบถูกจะทำให้ระบบให้คะแนนเพี้ยน */
+function validateChoices(body: any): string | null {
+  if (!Array.isArray(body?.choices)) return null; // ไม่ได้ส่งมา = ไม่แก้ตัวเลือก
+  const filled = body.choices.filter((c: any) => String(c?.text ?? "").trim());
+  if (filled.length < 2) return "ต้องมีตัวเลือกอย่างน้อย 2 ข้อ";
+  if (!filled.some((c: any) => c.isCorrect)) return "ต้องเลือกคำตอบที่ถูกอย่างน้อย 1 ข้อ";
+  return null;
+}
+
 /** บันทึกคำถาม 1 ข้อพร้อมตัวเลือก — ใช้ทั้งตอนเพิ่มและตอนแก้ */
 async function saveQuestion(questionId: string, body: any) {
   const choices: { text: string; isCorrect: boolean }[] = Array.isArray(body?.choices) ? body.choices : [];
@@ -459,6 +468,8 @@ async function saveQuestion(questionId: string, body: any) {
 adminRouter.post("/quizzes/:id/questions", async (req, res) => {
   const text = String(req.body?.text ?? "").trim();
   if (!text) return res.status(400).json({ message: "ต้องมีคำถาม" });
+  const invalid = validateChoices(req.body);
+  if (invalid) return res.status(400).json({ message: invalid });
 
   const next = await q1<{ n: number }>(
     "SELECT coalesce(max(sort_order), 0) + 1 AS n FROM questions WHERE quiz_id = $1",
@@ -482,19 +493,26 @@ adminRouter.post("/quizzes/:id/questions", async (req, res) => {
 
 /** PUT /admin/questions/:id */
 adminRouter.put("/questions/:id", async (req, res) => {
+  const invalid = validateChoices(req.body);
+  if (invalid) return res.status(400).json({ message: invalid });
+
   const { text, type, score, explanation, order } = req.body ?? {};
+  // ส่ง explanation: null มา = ตั้งใจล้างคำอธิบายทิ้ง ไม่ใช่ "ไม่ได้แก้"
+  // ถ้าใช้ COALESCE เฉยๆ จะลบคำอธิบายเก่าไม่ได้เลย
+  const clearsExplanation = Object.prototype.hasOwnProperty.call(req.body ?? {}, "explanation");
   await q(
     `UPDATE questions
         SET text        = COALESCE($1, text),
             type        = COALESCE($2, type),
             score       = COALESCE($3, score),
-            explanation = COALESCE($4, explanation),
-            sort_order  = COALESCE($5, sort_order)
-      WHERE id = $6`,
+            explanation = CASE WHEN $4 THEN $5 ELSE explanation END,
+            sort_order  = COALESCE($6, sort_order)
+      WHERE id = $7`,
     [
       text ?? null,
       type === "multiple" || type === "single" ? type : null,
       toInt(score),
+      clearsExplanation,
       explanation ?? null,
       toInt(order),
       req.params.id,

@@ -48,7 +48,22 @@ app.use((_req, res) => res.status(404).json({ message: "ไม่พบ endpoint
 // error handler ตัวสุดท้าย — ตอบรูปแบบเดียวกับที่ frontend คาดไว้ { message }
 app.use((err: Error, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
   console.error(err);
-  res.status(500).json({ message: err.message || "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
+
+  // แปลง error ของ Postgres ที่เกิดจาก input ผิดรูปแบบ ให้เป็นข้อความที่ผู้ใช้อ่านรู้เรื่อง
+  // แทนที่จะโยน error ภาษาอังกฤษดิบๆ ใส่หน้าจอ (เช่น id ที่ไม่ใช่ uuid)
+  const code = (err as { code?: string }).code;
+  const FRIENDLY: Record<string, { status: number; message: string }> = {
+    "22P02": { status: 400, message: "ข้อมูลที่ส่งมาไม่ถูกต้อง" },          // invalid_text_representation
+    "22003": { status: 400, message: "ตัวเลขเกินช่วงที่รองรับ" },           // numeric_value_out_of_range
+    "23505": { status: 409, message: "ข้อมูลนี้มีอยู่แล้ว" },                // unique_violation
+    "23503": { status: 400, message: "อ้างอิงข้อมูลที่ไม่มีอยู่จริง" },       // foreign_key_violation
+    "23514": { status: 400, message: "ข้อมูลไม่ผ่านเงื่อนไขที่กำหนด" },     // check_violation
+  };
+
+  const friendly = code ? FRIENDLY[code] : undefined;
+  if (friendly) return res.status(friendly.status).json({ message: friendly.message });
+
+  res.status(500).json({ message: "เกิดข้อผิดพลาดที่เซิร์ฟเวอร์" });
 });
 
 app.listen(PORT, () => {

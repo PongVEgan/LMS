@@ -205,7 +205,21 @@ export default function LessonPage() {
           </div>
 
           {/* Compact complete button */}
-          {completed ? (
+          {lesson.type === "quiz" ? (
+            completed ? (
+              <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--lms-accent)]/10 px-3 py-1.5">
+                <svg className="h-4 w-4 text-[var(--lms-accent-text)]" fill="currentColor" viewBox="0 0 20 20">
+                  <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                </svg>
+                <span className="text-xs font-medium text-[var(--lms-accent-text)]">สอบผ่านแล้ว</span>
+              </div>
+            ) : (
+              /* บทเรียนแบบข้อสอบต้องสอบผ่านเท่านั้น กดปุ่มข้ามไม่ได้ */
+              <span className="shrink-0 text-xs" style={{ color: "var(--lms-text-faint)" }}>
+                ต้องสอบผ่านถึงจะนับว่าเรียนจบ
+              </span>
+            )
+          ) : completed ? (
             <div className="flex shrink-0 items-center gap-1.5 rounded-lg bg-[var(--lms-accent)]/10 px-3 py-1.5">
               <svg className="h-4 w-4 text-[var(--lms-accent-text)]" fill="currentColor" viewBox="0 0 20 20">
                 <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
