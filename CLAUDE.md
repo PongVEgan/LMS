@@ -5,7 +5,8 @@ frontend ระบบเรียนออนไลน์ — โปรเจก
 ## Project
 - **Frontend:** Next.js 16 + React 19 + TailwindCSS 4 (พอร์ต 3000)
 - **Backend:** `server/` — Express 5 + TypeScript + Postgres (พอร์ต 3001, prefix `/api`)
-- **DB:** Postgres ใน Docker (`docker-compose.yml`, host port **5433**)
+- **DB:** Postgres ใน Docker (`docker-compose.yml`, project name ตรึงไว้ `projectlms`, host port **5433**)
+  **ห้ามลบบรรทัด `name:` ออกจาก compose** ไม่งั้นเปลี่ยนชื่อโฟลเดอร์แล้วข้อมูลจะหาย
   ดูข้อมูลผ่านหน้าเว็บได้ที่ `npm run db:ui` → Adminer ที่ :8080 (เข้าด้วย db / lms / lms / lms)
 - **Deploy (web):** Cloudflare Workers via @opennextjs/cloudflare + wrangler (`name: lms-web`)
 - สเปค endpoint ทั้งหมดอยู่ใน `docs/API.md` — **แก้ route แล้วต้องอัปเดตไฟล์นี้ด้วย**
