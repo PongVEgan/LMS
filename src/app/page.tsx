@@ -100,25 +100,8 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* จุดขาย */}
-      <section className="mx-auto max-w-5xl px-4 pb-4 sm:px-6">
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { title: "วิดีโอ + เอกสาร", desc: "บทเรียนมีทั้งวิดีโอ บทความ และไฟล์ให้ดาวน์โหลด" },
-            { title: "จำความคืบหน้า", desc: "เรียนถึงไหนระบบจำให้ กลับมาเรียนต่อได้ทันที" },
-            { title: "คอมมูนิตี้", desc: "ถามตอบ แชร์ประสบการณ์ และเก็บแต้มไต่เลเวลกับเพื่อนร่วมคอร์ส" },
-          ].map((f) => (
-            <div key={f.title} className="rounded-xl p-5"
-              style={{ background: "var(--lms-bg-card)", border: "1px solid var(--lms-border)" }}>
-              <h3 className="text-sm font-semibold">{f.title}</h3>
-              <p className="mt-1.5 text-xs leading-relaxed" style={{ color: "var(--lms-text-muted)" }}>{f.desc}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
       {/* คอร์ส */}
-      <section id="courses" className="mx-auto max-w-5xl px-4 py-14 sm:px-6">
+      <section id="courses" className="mx-auto max-w-5xl px-4 pb-14 sm:px-6">
         <h2 className="mb-1 text-xl font-bold">คอร์สทั้งหมด</h2>
         <p className="mb-6 text-sm" style={{ color: "var(--lms-text-muted)" }}>
           เลือกคอร์สที่สนใจ แล้วเริ่มเรียนได้ทันทีหลังชำระเงิน

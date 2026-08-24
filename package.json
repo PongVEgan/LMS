@@ -7,18 +7,19 @@
     "dev:web": "next dev",
     "dev:api": "npm --prefix server run dev",
     "dev:kill": "node scripts/kill-dev.mjs",
+    "demo": "next build && node scripts/dev.mjs --prod",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
     "db:reset": "npm --prefix server run db:reset",
+    "db:seed:web": "npm --prefix server run db:seed:web",
+    "db:backup": "node scripts/db-backup.mjs",
     "setup": "npm install && npm --prefix server install",
     "build": "next build",
     "build:cf": "npx @opennextjs/cloudflare build",
     "preview:cf": "npx wrangler dev",
     "deploy": "npx @opennextjs/cloudflare build && npx wrangler deploy",
     "start": "next start",
-    "lint": "eslint",
-    "db:seed:web": "npm --prefix server run db:seed:web",
-    "db:backup": "node scripts/db-backup.mjs"
+    "lint": "eslint"
   },
   "dependencies": {
     "@marsidev/react-turnstile": "^1.5.2",

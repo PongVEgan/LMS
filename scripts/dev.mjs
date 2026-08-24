@@ -1,15 +1,26 @@
 /**
- * รัน frontend + backend พร้อมกันด้วยคำสั่งเดียว: npm run dev
+ * รัน frontend + backend พร้อมกันด้วยคำสั่งเดียว
+ *   npm run dev    — โหมดพัฒนา (แก้โค้ดแล้วเห็นผลทันที แต่เปิดหน้าครั้งแรกช้า 20-60 วิ)
+ *   npm run demo   — โหมดสาธิต (เปิดทุกหน้าเร็วใน 0.2 วิ แต่แก้โค้ดแล้วต้อง build ใหม่)
+ *
  * เขียนเองแทนการลง concurrently เพื่อไม่ต้องแตะ lockfile
  */
 import { spawn, spawnSync } from "node:child_process";
 
 const isWindows = process.platform === "win32";
+const isProd = process.argv.includes("--prod");
 
-const targets = [
-  { name: "web", color: "\x1b[36m", args: ["run", "dev:web"] },
-  { name: "api", color: "\x1b[35m", args: ["--prefix", "server", "run", "dev"] },
-];
+const targets = isProd
+  ? [
+      { name: "web", color: "\x1b[36m", args: ["run", "start"] },
+      { name: "api", color: "\x1b[35m", args: ["--prefix", "server", "run", "start"] },
+    ]
+  : [
+      { name: "web", color: "\x1b[36m", args: ["run", "dev:web"] },
+      { name: "api", color: "\x1b[35m", args: ["--prefix", "server", "run", "dev"] },
+    ];
+
+if (isProd) console.log("โหมดสาธิต — แก้โค้ดแล้วต้องรัน npm run demo ใหม่ถึงจะเห็นผล\n");
 
 const RESET = "\x1b[0m";
 const children = [];

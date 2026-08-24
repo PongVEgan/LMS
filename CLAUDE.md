@@ -14,8 +14,11 @@ frontend ระบบเรียนออนไลน์ — โปรเจก
 npm run setup     # ครั้งแรก: ลง dep ทั้ง web + server
 npm run db:up     # Postgres ใน Docker (ต้องเปิด Docker Desktop ก่อน)
 npm run db:reset  # สร้างตาราง + seed
-npm run dev       # web + api พร้อมกัน
+npm run dev       # web + api พร้อมกัน (โหมดพัฒนา — เปิดหน้าครั้งแรกช้า 20-60 วิ เป็นเรื่องปกติ)
+npm run demo      # โหมดสาธิต — build ก่อนแล้วรัน ทุกหน้าเปิดใน 0.2 วิ ใช้ตอนโชว์งาน
 ```
+> **ห้ามเปิด dev server ค้างข้ามวัน** — Next.js dev มี memory leak พอทะลุ threshold
+> จะ restart ตัวเองแล้วค้างครึ่งๆ กลางๆ (พอร์ตเปิดแต่ไม่ตอบสนอง) แก้ด้วย `npm run dev:kill`
 บัญชีทดสอบ: `student@example.com` / `admin@example.com` / `member@example.com` — รหัส `password123`
 
 ## Structure
