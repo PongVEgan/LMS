@@ -10,6 +10,7 @@
     "demo": "next build && node scripts/dev.mjs --prod",
     "db:up": "docker compose up -d",
     "db:down": "docker compose down",
+    "db:ui": "node scripts/db-ui.mjs",
     "db:reset": "npm --prefix server run db:reset",
     "db:seed:web": "npm --prefix server run db:seed:web",
     "db:backup": "node scripts/db-backup.mjs",

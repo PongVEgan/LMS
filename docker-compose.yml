@@ -18,5 +18,21 @@ services:
       timeout: 3s
       retries: 10
 
+  # หน้าเว็บดู/แก้ฐานข้อมูล — เปิด http://localhost:8080 ได้เลย ไม่ต้องติดตั้งโปรแกรมเพิ่ม
+  # ใช้ตอนนำเสนอเพื่อโชว์ตารางและข้อมูลจริง
+  adminer:
+    image: adminer:5
+    container_name: lms-adminer
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    environment:
+      # เติมชื่อเซิร์ฟเวอร์ให้อัตโนมัติ เหลือแค่กรอก lms / lms ตอนเข้า
+      ADMINER_DEFAULT_SERVER: db
+      ADMINER_DESIGN: pepa-linha
+
 volumes:
   lms-pgdata:

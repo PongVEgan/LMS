@@ -114,6 +114,7 @@ npm run dev       # รัน web (3000) + api (3001) พร้อมกัน �
 | `npm run dev:web` / `npm run dev:api` | รันแยกทีละตัว |
 | `npm run dev:kill` | ปิด process ที่ค้างพอร์ต 3000/3001 |
 | `npm run db:up` / `npm run db:down` | เปิด/ปิด Postgres container |
+| `npm run db:ui` | เปิดหน้าเว็บดูฐานข้อมูล (Adminer) ที่ http://localhost:8080 |
 | `npm run db:reset` | ⚠️ **ลบข้อมูลทั้งหมด** แล้ว seed ใหม่ |
 | `npm run db:seed:web` | เพิ่มคอร์สสายเขียนเว็บ 3 คอร์ส (ไม่ลบของเดิม รันซ้ำได้) |
 | `npm run db:backup` | สำรอง DB เป็นไฟล์ `.sql` ใน `backups/` (เก็บ 10 ไฟล์ล่าสุด) |
@@ -147,6 +148,30 @@ npm run dev       # รัน web (3000) + api (3001) พร้อมกัน �
 จะเริ่มตอบ 500 เป็น HTML** (เพราะ stdout ของมันชี้ไปที่ process แม่ที่ตายแล้ว → EPIPE)
 อาการที่เห็นฝั่ง browser คือ `ClientFetchError: Unexpected token '<'` แล้วล็อกอินไม่ได้
 แก้ด้วย `npm run dev:kill` แล้ว `npm run dev` ใหม่
+
+## ดูฐานข้อมูลผ่านหน้าเว็บ
+
+ตอนนำเสนอถ้าต้องการโชว์ตารางและข้อมูลจริง ใช้ **Adminer** ที่มาพร้อม Docker แล้ว
+ไม่ต้องติดตั้ง pgAdmin หรือ DBeaver เพิ่ม:
+
+```bash
+npm run db:ui      # เปิด http://localhost:8080 ให้อัตโนมัติ
+```
+
+ข้อมูลเข้าสู่ระบบ (เติมช่องเซิร์ฟเวอร์ให้อัตโนมัติแล้ว):
+
+| ช่อง | ค่า |
+|---|---|
+| ระบบฐานข้อมูล | PostgreSQL |
+| เซิร์ฟเวอร์ | `db` |
+| ผู้ใช้ | `lms` |
+| รหัสผ่าน | `lms` |
+| ฐานข้อมูล | `lms` |
+
+เข้าไปแล้วกดชื่อตารางเพื่อดูโครงสร้าง กด **Select data** เพื่อดูข้อมูล
+และมีเมนู **SQL command** ไว้รัน query สดได้
+
+> Adminer ผูกกับ container ฐานข้อมูลโดยตรง เปิดได้เฉพาะในเครื่องที่รัน Docker เท่านั้น
 
 ## สำรอง / กู้คืนข้อมูล
 
